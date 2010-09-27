@@ -455,7 +455,7 @@ choose_nandroid_file(const char *nandroid_folder)
             if (confirm_apply == BTN_MOUSE) {
                       
                             ui_print("\nRestoring : ");
-       		            char nandroid_command[200]="/sbin/nandroid-mobile.sh -r -e --androidsecure --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput -s";
+       		            char nandroid_command[200]="/sbin/nandroid-mobile.sh -r -e --androidsecure --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput -s ";
 
 			    strlcat(nandroid_command, list[chosen_item], sizeof(nandroid_command));
 
