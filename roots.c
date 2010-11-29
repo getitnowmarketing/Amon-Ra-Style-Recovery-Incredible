@@ -54,7 +54,7 @@ static RootInfo g_roots[] = {
     { "PACKAGE:", NULL, NULL, NULL, NULL, g_package_file },
     { "RECOVERY:", g_mtd_device, NULL, "recovery", "/", g_raw },
     { "SDCARD:", "/dev/block/mmcblk1p1", "/dev/block/mmcblk1", NULL, "/sdcard", "vfat" },
-    { "SDEXT:", "/dev/block/mmcblk1p2", NULL, NULL, "/sd-ext", "auto" },
+    { "SDEXT:", "/dev/block/mmcblk1p2", NULL, NULL, "/sd-ext", "ext4" },
     { "SYSTEM:", g_mtd_device, NULL, "system", "/system", "yaffs2" },
     { "MBM:", g_mtd_device, NULL, "mbm", NULL, g_raw },
     { "TMP:", NULL, NULL, NULL, "/tmp", NULL },
