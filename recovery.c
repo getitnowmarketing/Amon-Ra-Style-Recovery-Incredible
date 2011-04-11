@@ -948,7 +948,7 @@ show_menu_wipe()
     static char* items[] = { "- Wipe ALL userdata",
 			     "- Wipe only /data",
                              "- Wipe only /sd-ext",
-                             "- Wipe only /emmc/.android_secure",
+                             "- Wipe only .android_secure",
                              "- Wipe only /cache",
                              "- Wipe only Dalvik-cache",
                              "- Wipe only battery stats",
@@ -994,7 +994,7 @@ show_menu_wipe()
                     if (confirm_wipe_all == BTN_MOUSE) {
                         erase_root("DATA:");
                         erase_root("DATADATA:");
-			erase_root("EMMC:.android_secure");
+			erase_root("SDCARD:.android_secure");
                         //erase_root("CACHE:");
 			format_non_mtd_device("CACHE:");
 			ui_print("Formatting CACHE...\n\n");
@@ -1054,15 +1054,15 @@ show_menu_wipe()
 
                 case ITEM_WIPE_SECURE:
                     ui_clear_key_queue();
-		    ui_print("\nWipe /emmc/.android_secure");
+		    ui_print("\nWipe .android_secure");
                     ui_print("\nPress Trackball to confirm,");
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_secure = ui_wait_key();
                     if (confirm_wipe_secure == BTN_MOUSE) {
-                        erase_root("EMMC:.android_secure");
-                        ui_print("/emmc/.android_secure wipe complete!\n\n");
+                        erase_root("SDCARD:.android_secure");
+                        ui_print(".android_secure wipe complete!\n\n");
                     } else {
-                        ui_print("/emmc/.android_secure wipe aborted!\n\n");
+                        ui_print(".android_secure wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
