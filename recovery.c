@@ -2124,8 +2124,8 @@ prompt_and_wait()
                     return;
 
                 case ITEM_USBTOGGLE:
-                    usb_toggle_sdcard();	
-                    break;  
+				show_menu_usb();	
+                			break;  
 
 		case ITEM_BR:
                     show_menu_br();
