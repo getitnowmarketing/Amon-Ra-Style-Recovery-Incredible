@@ -57,10 +57,8 @@ static const char *LOG_FILE = "CACHE:recovery/log";
 static const char *SDCARD_PACKAGE_FILE = "SDCARD:update.zip";
 static const char *SDCARD_PATH = "SDCARD:";
 static const char *NANDROID_PATH = "SDCARD:/nandroid/";
-//static const char *EMMC_PATH = "EMMC:" 
 #define SDCARD_PATH_LENGTH 7
 #define NANDROID_PATH_LENGTH 17
-//#define EMMC_PATH_LENGTH 5
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 
 void free_string_array(char** array);
@@ -128,7 +126,6 @@ static const int MAX_ARG_LENGTH = 4096;
 static const int MAX_ARGS = 100;
 
 static int do_reboot = 1;
-//static int do_verify = 1;
 
 // open a file given in root:path format, mounting partitions as necessary
 static FILE*
@@ -307,7 +304,6 @@ erase_root(const char *root)
 }
 
 
-
 static void
 choose_nandroid_file(const char *nandroid_folder)
 {
@@ -429,7 +425,7 @@ choose_nandroid_file(const char *nandroid_folder)
             if (confirm_apply == BTN_MOUSE) {
                       
                             ui_print("\nRestoring : ");
-       		            char nandroid_command[200]="/sbin/nandroid-mobile.sh -r -e --androidsecure --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput -s ";
+       		            char nandroid_command[200]="/sbin/nandroid-mobile.sh -r -e -a --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput -s ";
 
 			    strlcat(nandroid_command, list[chosen_item], sizeof(nandroid_command));
 
@@ -450,7 +446,7 @@ choose_nandroid_file(const char *nandroid_folder)
                             ui_print("\n");
 
                            if (!WIFEXITED(status3) || (WEXITSTATUS(status3) != 0)) {
-                               ui_print("\nError : run 'nandroid-mobile.sh restore' via adb!\n\n");
+                               ui_print("\nOops... something went wrong!\nPlease check the recovery log!\n\n");
                           } else {
                                 ui_print("\nRestore complete!\n\n");
                           }
@@ -821,6 +817,129 @@ void free_string_array(char** array)
     free(array);
 }
 
+static void
+show_menu_nandroid()
+{
+   static char* headers[] = { "What do you want to backup?",
+			       "",
+			       NULL };
+				   
+	char* items[] = {       "- [X] boot",
+				"- [X] system",
+				"- [X] data",
+				"- [X] cache",
+				"- [ ] recovery",
+				"- [ ] sd-ext",
+				"- [ ] .android_secure",
+				"- Perform Backup",
+		NULL};
+
+	static char* items_in[] = { 
+				"- [X] boot",
+				"- [X] system",
+				"- [X] data",
+				"- [X] cache",
+				"- [X] recovery",
+				"- [X] sd-ext",
+				"- [X] .android_secure",
+				"- Perform Backup",
+		NULL};
+	
+	static char* items_out[] = { 
+				"- [ ] boot",
+				"- [ ] system",
+				"- [ ] data",
+				"- [ ] cache",
+				"- [ ] recovery",
+				"- [ ] sd-ext",
+				"- [ ] .android_secure",
+				"- Perform Backup",
+               	NULL};
+
+	
+	ui_start_menu(headers, items);
+        int selected = 0;
+        int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        int key = ui_wait_key();
+        int visible = ui_text_visible();
+
+        if (key == KEY_VOLUMEDOWN) {
+            break;
+        } else if ((key == KEY_DOWN) && visible) {
+            ++selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == KEY_UP) && visible) {
+            --selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == BTN_MOUSE) && visible ) {
+            chosen_item = selected;
+        }
+        
+        if (chosen_item >= 0) {
+
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+
+            if (chosen_item < 7) {
+		   // Rebuild items
+		   if (items[chosen_item]==items_in[chosen_item]) {
+	               items[chosen_item]=items_out[chosen_item];
+	           } else {
+	               items[chosen_item]=items_in[chosen_item];
+	           }
+
+            } else {
+
+	      char nandroid_command[1024];
+	      strcpy(nandroid_command, "/sbin/nandroid-mobile.sh -b --nomisc --nosplash1 --nosplash2 --defaultinput");
+
+                int i=0;
+		while (items[i])
+		{
+
+
+				if (items[i]=="- [X] sd-ext") strcat(nandroid_command, " -e");
+				if (items[i]=="- [X] .android_secure") strcat(nandroid_command, " -a");
+				if (items[i]=="- [ ] recovery") strcat(nandroid_command, " --norecovery");
+				if (items[i]=="- [ ] boot") strcat(nandroid_command, " --noboot");
+				if (items[i]=="- [ ] data") strcat(nandroid_command, " --nodata");
+				if (items[i]=="- [ ] system") strcat(nandroid_command, " --nosystem");
+				if (items[i]=="- [ ] cache") strcat(nandroid_command, " --nocache");
+                	        
+		i++;	
+		}
+
+			run_script("\nCreate Nandroid backup?",
+				   "\nPerforming backup : ",
+				   nandroid_command,
+				   "\nuNnable to execute nandroid-mobile.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nBackup complete!\n\n",
+				   "\nBackup aborted!\n\n");
+
+            }
+
+            ui_start_menu(headers, items);
+            chosen_item = -1;
+            selected = 0;
+
+            finish_recovery(NULL);
+            ui_reset_progress();
+
+            // throw away keys pressed while the command was running,
+            // so user doesn't accidentally trigger menu items.
+            ui_clear_key_queue();
+        } 
+
+    }
+	
+}
+
 void show_choose_zip_menu()
 {
     if (ensure_root_path_mounted("SDCARD:") != 0) {
@@ -938,21 +1057,21 @@ show_menu_wipe()
 // these constants correspond to elements of the items[] list.
 #define ITEM_WIPE_ALL      0
 #define ITEM_WIPE_DATA     1
-#define ITEM_WIPE_EXT      2
+#define ITEM_WIPE_CACHE    2
 #define ITEM_WIPE_SECURE   3
-#define ITEM_WIPE_CACHE    4
+#define ITEM_WIPE_EXT      4
 #define ITEM_WIPE_DALVIK   5
 #define ITEM_WIPE_BAT      6
 #define ITEM_WIPE_ROT      7
 
-    static char* items[] = { "- Wipe ALL userdata",
-			     "- Wipe only /data",
-                             "- Wipe only /sd-ext",
-                             "- Wipe only .android_secure",
-                             "- Wipe only /cache",
-                             "- Wipe only Dalvik-cache",
-                             "- Wipe only battery stats",
-                             "- Wipe only rotate settings",
+    static char* items[] = { "- Wipe ALL data/factory reset",
+			     "- Wipe /data",
+                             "- Wipe /cache",
+			     "- Wipe /sdcard/.android_secure",
+                             "- Wipe /sd-ext",
+                             "- Wipe Dalvik-cache",
+                             "- Wipe battery stats",
+                             "- Wipe rotate settings",
                              NULL };
 
     ui_start_menu(headers, items);
@@ -1054,15 +1173,15 @@ show_menu_wipe()
 
                 case ITEM_WIPE_SECURE:
                     ui_clear_key_queue();
-		    ui_print("\nWipe .android_secure");
+		    ui_print("\nWipe /sdcard/.android_secure");
                     ui_print("\nPress Trackball to confirm,");
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_secure = ui_wait_key();
                     if (confirm_wipe_secure == BTN_MOUSE) {
                         erase_root("SDCARD:.android_secure");
-                        ui_print(".android_secure wipe complete!\n\n");
+                        ui_print("/sdcard/.android_secure wipe complete!\n\n");
                     } else {
-                        ui_print(".android_secure wipe aborted!\n\n");
+                        ui_print("/sdcard/.android_secure wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
@@ -1142,10 +1261,6 @@ show_menu_wipe()
                     }
                     if (!ui_text_visible()) return;
                     break;
-
-
-
-			break;
             
             }
 
@@ -1177,19 +1292,13 @@ show_menu_br()
 
 // these constants correspond to elements of the items[] list.
 #define ITEM_NANDROID_BCK  0
-#define ITEM_NANDROID_BCK_AS 1
-#define ITEM_NANDROID_BCKEXT  2
-#define ITEM_NANDROID_BCKEXT_AS 3
-#define ITEM_NANDROID_RES  4
-#define ITEM_GOOG_BCK  5
-#define ITEM_GOOG_RES  6
+#define ITEM_NANDROID_RES  1
+#define ITEM_GOOG_BCK  2
+#define ITEM_GOOG_RES  3
 
 
 
     static char* items[] = { "- Nand backup",
-			     "- Nand backup + .android_secure",
-			     "- Nand + ext backup",
-			     "- Nand + ext backup + .android_secure",
 			     "- Nand restore",
 			     "- Backup Google proprietary system files",
                              "- Restore Google proprietary system files",
@@ -1226,46 +1335,15 @@ show_menu_br()
             switch (chosen_item) {
 
                 case ITEM_NANDROID_BCK:
-			run_script("\nCreate Nandroid backup?",
-				   "\nPerforming backup : ",
-				   "/sbin/nandroid-mobile.sh -b --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput",
-				   "\nuNnable to execute nandroid-mobile.sh!\n(%s)\n",
-				   "\nError : Run 'nandroid-mobile.sh' via adb!\n",
-				   "\nBackup complete!\n\n",
-				   "\nBackup aborted!\n\n");
-			break;
-		
-		case ITEM_NANDROID_BCK_AS:
-			run_script("\nCreate Nandroid backup?",
-				   "\nPerforming backup : ",
-				   "/sbin/nandroid-mobile.sh -b --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput --androidsecure",
-				   "\nuNnable to execute nandroid-mobile.sh!\n(%s)\n",
-				   "\nError : Run 'nandroid-mobile.sh' via adb!\n",
-				   "\nBackup complete!\n\n",
-				   "\nBackup aborted!\n\n");
-			break;
-                
-		case ITEM_NANDROID_BCKEXT:
-			run_script("\nCreate Nandroid + ext backup?",
-				   "\nPerforming backup : ",
-				   "/sbin/nandroid-mobile.sh -b -e --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput",
-				   "\nuNnable to execute nandroid-mobile.sh!\n(%s)\n",
-				   "\nError : Run 'nandroid-mobile.sh' via adb!\n",
-				   "\nBackup complete!\n\n",
-				   "\nBackup aborted!\n\n");
-			break;
-		
-		case ITEM_NANDROID_BCKEXT_AS:
-			run_script("\nCreate Nandroid + ext backup?",
-				   "\nPerforming backup : ",
-				   "/sbin/nandroid-mobile.sh -b -e --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput --androidsecure",
-				   "\nuNnable to execute nandroid-mobile.sh!\n(%s)\n",
-				   "\nError : Run 'nandroid-mobile.sh' via adb!\n",
-				   "\nBackup complete!\n\n",
-				   "\nBackup aborted!\n\n");
-			break;
-                
-		case ITEM_NANDROID_RES:
+		    ui_print("\n\n*** WARNING ***");
+		    ui_print("\nsd-ext and .android_secure backups require");
+		    ui_print("\nlots of SDcard space and may take a few");
+		    ui_print("\nminutes to back up!\n\n");
+		    show_menu_nandroid();
+                    break;
+
+
+                case ITEM_NANDROID_RES:
                     	choose_nandroid_folder();
 	                break;
 
@@ -1274,7 +1352,7 @@ show_menu_br()
 				   "\nPerforming backup : ",
 				   "/sbin/backuptool.sh backup",
 				   "\nuNnable to execute backuptool.sh!\n(%s)\n",
-				   "\nError : Run 'backuptools.sh' via adb!\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
 				   "\nBackup complete!\n\n",
 				   "\nBackup aborted!\n\n");
 			break;
@@ -1284,7 +1362,7 @@ show_menu_br()
 				   "\nPerforming restore : ",
 				   "/sbin/backuptool.sh restore",
 				   "\nuNnable to execute backuptool.sh!\n(%s)\n",
-				   "\nError : Run 'backuptools.sh' via adb!\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
 				   "\nRestore complete!\n\n",
 				   "\nRestore aborted!\n\n");
 			break;
@@ -1421,7 +1499,7 @@ show_menu_partition()
 				   		   "\nPartitioning sdcard : ",
 				   		   es,
 	   					   "\nuNnable to execute parted!\n(%s)\n",
-						   "\nError : Run 'sdparted' via adb!\n",
+						   "\nOops... something went wrong!\nPlease check the recovery log!\n",
 						   "\nPartitioning complete!\n\n",
 						   "\nPartitioning aborted!\n\n");
 
@@ -1437,7 +1515,7 @@ show_menu_partition()
 				   "\nRepairing ext filesystem : ",
 				   "/sbin/fs repair",
 				   "\nUnable to execute fs!\n(%s)\n",
-				   "\nError : Run 'fs repair' via adb!\n\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				   "\nExt repairing complete!\n\n",
 				   "\nExt repairing aborted!\n\n");
 			break;
@@ -1447,7 +1525,7 @@ show_menu_partition()
 				   "\nUpgrading ext2 to ext3 : ",
 				   "/sbin/fs ext3",
 				   "\nUnable to execute fs!\n(%s)\n",
-				   "\nError : Run 'fs ext3' via adb!\n\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				   "\nExt upgrade complete!\n\n",
 				   "\nExt upgrade aborted!\n\n");
 			break;
@@ -1457,7 +1535,7 @@ show_menu_partition()
 				   "\nUpgrading ext3 to ext4 : ",
 				   "/sbin/fs ext4",
 				   "\nUnable to execute fs!\n(%s)\n",
-				   "\nError : Run 'fs ext4' via adb!\n\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				   "\nExt upgrade complete!\n\n",
 				   "\nExt upgrade aborted!\n\n");
 			break;
@@ -1487,7 +1565,7 @@ show_menu_other()
     static char* headers[] = { "Choose item,",
 			       "or press VOL-DOWN to return",
 			       "",
-			       	NULL };
+			       NULL };
 
 // these constants correspond to elements of the items[] list.
 #define ITEM_OTHER_FIXUID 0
@@ -1536,7 +1614,7 @@ show_menu_other()
 				   "\nFixing package uid mismatches : ",
 				   "/sbin/fix_permissions",
 				   "\nUnable to execute fix_permissions!\n(%s)\n",
-				   "\nError : Run 'fix_permissions' via adb!\n\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				   "\nUid mismatches fixed!\n\n",
 				   "\nFixing aborted!\n\n");
 			break;
@@ -1546,7 +1624,7 @@ show_menu_other()
 				   "\nMoving : ",
 				   "/sbin/log2sd",
 				   "\nUnable to execute log2sd!\n(%s)\n",
-				   "\nError : Run 'log2sd' via adb!\n\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				   "\nMoving complete!\n\n",
 				   "\nMoving aborted!\n\n");
 			break;
@@ -1578,22 +1656,22 @@ show_menu_other()
 }
 
 static void
-show_menu_flash_zip()
+show_menu_flash()
 {
 
     static char* headers[] = { "Choose item,",
 			       "or press VOL-DOWN to return",
 			       "",
-			       	NULL };
+			       NULL };
 
 // these constants correspond to elements of the items[] list.
-#define ITEM_FLASH_SDCARD 0
+#define ITEM_FLASHZIP 0
 #define ITEM_FLASH_EMMC  1
 #define ITEM_FLASH_TOGGLE 2
 
-    static char* items[] = { "- Flash zip from Sdcard",
-			     "- Flash zip from Emmc",
-                             "- Toggle Signature Verify",
+    static char* items[] = { "- Choose zip from sdcard",
+                             "- Choose zip from emmc",
+			     "- Toggle signature verification",
 				NULL };
 
     ui_start_menu(headers, items);
@@ -1626,16 +1704,16 @@ show_menu_flash_zip()
 
             switch (chosen_item) {
 
-	        case ITEM_FLASH_SDCARD:
-				show_choose_zip_menu();
-			break;
-
-		case ITEM_FLASH_EMMC:
-				show_choose_zip_menu_emmc();
-			break;
+		case ITEM_FLASHZIP:
+        	        show_choose_zip_menu();
+        	        break;
 		
+		case ITEM_FLASH_EMMC:
+			show_choose_zip_menu_emmc();
+        	        break;
+
 		case ITEM_FLASH_TOGGLE:
-				do_verify_switch();
+      			toggle_signature_check();
 			break;   
            
             }
@@ -1655,6 +1733,7 @@ show_menu_flash_zip()
         }
     }
 }
+
 
 
 static void
@@ -1741,7 +1820,7 @@ show_menu_mount()
             selected = ui_menu_select(selected);
         } else if ((key == BTN_MOUSE) && visible ) {
             chosen_item = selected;
-}
+	}
         if (chosen_item >= 0) {
             // turn off the menu, letting ui_print() to scroll output
             // on the screen.
@@ -1765,6 +1844,136 @@ show_menu_mount()
     }
 	
 }
+
+static void
+show_menu_ext4_data()
+{
+
+    static char* headers[] = { "Choose  item,",
+			       "or press VOL-DOWN to return",
+			       "",
+			       NULL };
+
+// these constants correspond to elements of the items[] list.
+//#define ITEM_EXT4_CHK          0
+#define ITEM_EXT4_FORMEXT4     0
+#define ITEM_EXT4_FORMEXT3     1
+
+    static char* items[] = { //"- Check /data fs format",
+			     "- Format /data to ext4",
+			     "- Format /data to ext3",
+                              NULL };
+
+ui_start_menu(headers, items);
+    int selected = 0;
+    int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        int key = ui_wait_key();
+        int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
+        int visible = ui_text_visible();
+
+        if (key == KEY_VOLUMEDOWN) {
+            break;
+        } else if ((key == KEY_DOWN) && visible) {
+            ++selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == KEY_UP) && visible) {
+            --selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == BTN_MOUSE) && visible ) {
+            chosen_item = selected;
+        }
+
+        if (chosen_item >= 0) {
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+
+            switch (chosen_item) {
+
+	/*	
+		case ITEM_EXT4_CHK:
+			run_script("\nChecking ext filesystem",
+				   "\non /data : ",
+				   "/sbin/partext4 check",
+				   "\nUnable to execute partext4!\n(%s)\n",
+				   "\nError : Run 'partext4 check' via adb!\n\n",
+				   "\nExt type check complete!\n\n",
+				   "\nExt type check aborted!\n\n");
+			break;
+	*/
+		case ITEM_EXT4_FORMEXT4:
+                        ui_clear_key_queue();
+			ui_print("\nFormat /data to ext4?");
+			ui_print("\nPress Trackball to confirm,");
+		       	ui_print("\nany other key to abort.");
+			ui_print("\nThis wipes /data too!!\n");
+			int confirm_formext4 = ui_wait_key();
+				if (confirm_formext4 == BTN_MOUSE) {
+	                          // ui_print("\nFormatting data as ext4...\n");     
+				   erase_root("DATA:");
+				run_script("\nFormat ext4",
+					 "\nFormatting ext4 : ",
+					 "/sbin/partext4 formatext4",
+				  	 "\nUnable to execute partext4!\n(%s)\n",
+				  	 "\nError : Run 'partext4 formatext4' via adb!\n\n",
+				  	 "\nExt4 format complete!\n\n",
+				  	 "\nExt4 format aborted!\n\n");
+				  // ui_print("\nFormatting data as ext4 complete.\n\n");
+				} else {
+					 ui_print("\nFormatting data as ext4 aborted.\n\n");
+				}
+				if (!ui_text_visible()) return;
+				
+			break;
+
+		case ITEM_EXT4_FORMEXT3:
+                        ui_clear_key_queue();
+			ui_print("\nReformat /data to ext3?");
+			ui_print("\nPress Trackball to confirm,");
+		       	ui_print("\nany other key to abort.");
+			ui_print("\nThis wipes /data too!!\n");
+			int confirm_formext3 = ui_wait_key();
+				if (confirm_formext3 == BTN_MOUSE) {
+	                          // ui_print("\nReformatting data as ext3...\n");     
+				   erase_root("DATA:");
+				run_script("\nFormat ext3",
+					 "\nFormatting ext3 : ",
+					 "/sbin/partext4 reformatext3",
+				  	 "\nUnable to execute partext4!\n(%s)\n",
+				  	 "\nError : Run 'partext4 reformatext3' via adb!\n\n",
+				  	 "\nExt3 re-format complete!\n\n",
+				  	 "\nExt3 re-format aborted!\n\n");
+				} else {
+					 ui_print("\nReFormatting data as ext3 aborted.\n\n");
+				}
+				if (!ui_text_visible()) return;    	
+			
+				break;		
+
+
+	        
+            }
+
+            // if we didn't return from this function to reboot, show
+            // the menu again.
+            ui_start_menu(headers, items);
+            selected = 0;
+            chosen_item = -1;
+
+            finish_recovery(NULL);
+            ui_reset_progress();
+
+            // throw away keys pressed while the command was running,
+            // so user doesn't accidentally trigger menu items.
+            ui_clear_key_queue();
+        }
+    }
+}
+
 
 static void
 show_menu_usb()
@@ -1860,7 +2069,8 @@ prompt_and_wait()
 #define ITEM_PARTITION     5
 #define ITEM_MOUNT	   6
 #define ITEM_OTHER         7
-#define ITEM_POWEROFF      8
+#define ITEM_EXT4DATA      8
+#define ITEM_POWEROFF      9
 
 
     static char* items[] = { "- Reboot system now",
@@ -1871,7 +2081,8 @@ prompt_and_wait()
                              "- Partition sdcard",
                              "- Mounts",
 			     "- Other",
-                             "- Power off",
+                             "- Format /data Ext4|Ext3",
+			     "- Power off",
                              NULL };
 
     ui_start_menu(headers, items);
@@ -1913,15 +2124,15 @@ prompt_and_wait()
                     return;
 
                 case ITEM_USBTOGGLE:
-				show_menu_usb();	
-                			break;  
+                    usb_toggle_sdcard();	
+                    break;  
 
 		case ITEM_BR:
                     show_menu_br();
                     break;
 
 		case ITEM_FLASH:
-                    show_menu_flash_zip();
+                    show_menu_flash();
                     break;
 
                 case ITEM_WIPE:
@@ -1932,20 +2143,24 @@ prompt_and_wait()
                     show_menu_partition();
                     break;
 
-		case ITEM_OTHER:
-                    show_menu_other();
-        	    break; 
-		
 		case ITEM_MOUNT:
 			show_menu_mount();
 			break;
-	       
-		 case ITEM_POWEROFF:
+
+		case ITEM_OTHER:
+                    show_menu_other();
+        	    break; 
+
+	        case ITEM_EXT4DATA:
+			show_menu_ext4_data();
+			break;
+
+		case ITEM_POWEROFF:
 			run_script("\nPower off phone?",
 				   "\nShutting down : ",
 				   "/sbin/reboot -p",
 				   "\nUnable to power off phone!\n(%s)\n",
-				   "\nError : Run 'reboot -p' via adb!\n\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				   "\nPower off complete!\n\n",
 				   "\nPower off aborted!\n\n");
 			break;
@@ -1989,7 +2204,7 @@ main(int argc, char **argv)
     tcflow(STDIN_FILENO, TCOOFF);
 
     char prop_value[PROPERTY_VALUE_MAX];
-    property_get("ro.modversion", &prop_value, "not set");
+    property_get("ro.modversion", &prop_value[0], "not set");
  
     ui_init();
     ui_print("Build : ");
