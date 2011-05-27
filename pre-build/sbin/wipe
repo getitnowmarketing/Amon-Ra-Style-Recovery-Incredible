@@ -1,0 +1,21 @@
+#!/sbin/sh
+
+um
+if [ $? != "0" ]; then
+	echo "Unable to unmount!"
+	exit 1
+fi
+
+case $1 in
+    emmc)
+	 mount /emmc > /dev/null 2>&1
+         rm -rf /emmc/*
+         rm -rf /emmc/*
+        ;;
+    --)
+        ;;
+esac
+
+exit 0
+
+	 

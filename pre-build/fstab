@@ -1,0 +1,7 @@
+/dev/block/mmcblk0p1    /data auto rw
+/dev/block/mtdblock3	/system	yaffs2	rw
+/dev/block/mtdblock5	/cache	auto	rw
+/dev/block/mtdblock6	/datadata yaffs2 rw
+/dev/block/mmcblk1p1	/sdcard	vfat	rw
+/dev/block/mmcblk1p2	/sd-ext auto    rw
+/dev/block/mmcblk0p3	/emmc auto rw

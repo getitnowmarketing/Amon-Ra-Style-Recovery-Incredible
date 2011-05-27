@@ -57,8 +57,10 @@ static const char *LOG_FILE = "CACHE:recovery/log";
 static const char *SDCARD_PACKAGE_FILE = "SDCARD:update.zip";
 static const char *SDCARD_PATH = "SDCARD:";
 static const char *NANDROID_PATH = "SDCARD:/nandroid/";
+static const char *DUALBOOT_PATH = "SDCARD:/DualRom/backups/";
 #define SDCARD_PATH_LENGTH 7
 #define NANDROID_PATH_LENGTH 17
+#define DUALBOOT_PATH_LENGTH 24
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 
 void free_string_array(char** array);
@@ -465,6 +467,173 @@ out:
     for (i = 0; i < total; i++) {
         free(files[i]);
 	free(list[i]);
+    }
+    free(files);
+    free(list);
+}
+
+
+static void
+choose_dualboot_folder()
+{
+    static char* headers[] = { "Choose DualBoot Backup,",
+			       "or press VOL-DOWN to return",
+                               "",
+                               NULL };
+
+    char path[PATH_MAX] = "";
+    DIR *dir;
+    struct dirent *de;
+    char **files;
+    char **list;
+    int total = 0;
+    int i;
+
+    if (ensure_root_path_mounted(DUALBOOT_PATH) != 0) {
+        LOGE("Can't mount %s\n", DUALBOOT_PATH);
+        return;
+    }
+
+    if (translate_root_path(DUALBOOT_PATH, path, sizeof(path)) == NULL) {
+        LOGE("Bad path %s", path);
+        return;
+    }
+
+    dir = opendir(path);
+    if (dir == NULL) {
+        LOGE("Couldn't open directory %s", path);
+        return;
+    }
+
+    /* count how many files we're looking at */
+    while ((de = readdir(dir)) != NULL) {
+        char *extension = strrchr(de->d_name, '.');
+        if (de->d_name[0] == '.') {
+            continue;
+        } else {
+            total++;
+        }
+    }
+
+    if (total==0) {
+        LOGE("No DualBoot Backup folder found\n");
+    		if (closedir(dir) < 0) {
+		  LOGE("Failure closing directory %s", path);
+	          goto out;
+    		}
+        return;
+    }
+
+    /* allocate the array for the file list menu */
+    files = (char **) malloc((total + 1) * sizeof(*files));
+    files[total] = NULL;
+
+    list = (char **) malloc((total + 1) * sizeof(*files));
+    list[total] = NULL;
+
+    /* set it up for the second pass */
+    rewinddir(dir);
+
+    /* put the names in the array for the menu */
+    i = 0;
+    while ((de = readdir(dir)) != NULL) {
+        if (de->d_name[0] == '.') {
+            continue;
+        } else {
+            files[i] = (char *) malloc(DUALBOOT_PATH_LENGTH + strlen(de->d_name) + 1);
+            strcpy(files[i], DUALBOOT_PATH);
+            strcat(files[i], de->d_name);
+
+            list[i] = (char *) malloc(strlen(de->d_name) + 1);
+            strcpy(list[i], de->d_name);
+
+            i++;
+        }
+    }
+
+    /* close directory handle */
+    if (closedir(dir) < 0) {
+        LOGE("Failure closing directory %s", path);
+        goto out;
+    }
+
+    ui_start_menu(headers, list);
+    int selected = 0;
+    int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        int key = ui_wait_key();
+        int visible = ui_text_visible();
+
+        if (key == KEY_VOLUMEDOWN) {
+            break;
+        } else if ((key == KEY_DOWN) && visible) {
+            ++selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == KEY_UP) && visible) {
+            --selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == BTN_MOUSE) && visible ) {
+            chosen_item = selected;
+        }
+
+        if (chosen_item >= 0) {
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+
+            ui_print("\nRestore ");
+            ui_print(list[chosen_item]);
+            ui_clear_key_queue();
+            ui_print(" ?\nPress Trackball to confirm,");
+            ui_print("\nany other key to abort.\n");
+            int confirm_apply = ui_wait_key();
+            if (confirm_apply == BTN_MOUSE) {
+                      
+                            ui_print("\nRestoring : ");
+       		            char dualboot_command[80]="/sbin/dualboot.sh restore ";
+
+			    strlcat(dualboot_command, list[chosen_item], sizeof(dualboot_command));
+
+                            pid_t pid = fork();
+                            if (pid == 0) {
+                                char *args[] = {"/sbin/sh", "-c", dualboot_command , "1>&2", NULL};
+                                execv("/sbin/sh", args);
+                                fprintf(stderr, "\nCan't run dualboot.sh\n(%s)\n", strerror(errno));
+        	                _exit(-1);
+
+                            }
+
+                            int status3;
+
+                            while (waitpid(pid, &status3, WNOHANG) == 0) {
+                                ui_print(".");
+                                sleep(1);
+                            } 
+                            ui_print("\n");
+
+                           if (!WIFEXITED(status3) || (WEXITSTATUS(status3) != 0)) {
+                               ui_print("\nOops... something went wrong!\nPlease check the recovery log!\n\n");
+                          } else {
+                                ui_print("\nRestore complete!\n\n");
+                          }
+
+                        
+            } else {
+                ui_print("\nRestore aborted.\n");
+            }
+            if (!ui_text_visible()) break;
+            break;
+        }
+    }
+
+out:
+
+    for (i = 0; i < total; i++) {
+        free(files[i]);
+        free(list[i]);
     }
     free(files);
     free(list);
@@ -914,6 +1083,11 @@ show_menu_nandroid()
 		i++;	
 		}
 
+			ui_print("\nIf using DualBoot ensure that");
+                    	ui_print("\nPhone Boot.img is installed,");
+                    	ui_print("\nelse the wrong boot will be backed up.");
+			ui_print("\nYou can reinstall it via DualBoot menu.\n\n");
+
 			run_script("\nCreate Nandroid backup?",
 				   "\nPerforming backup : ",
 				   nandroid_command,
@@ -1063,6 +1237,8 @@ show_menu_wipe()
 #define ITEM_WIPE_DALVIK   5
 #define ITEM_WIPE_BAT      6
 #define ITEM_WIPE_ROT      7
+#define ITEM_WIPE_SDCARD   8
+#define ITEM_WIPE_EMMC     9
 
     static char* items[] = { "- Wipe ALL data/factory reset",
 			     "- Wipe /data",
@@ -1072,7 +1248,9 @@ show_menu_wipe()
                              "- Wipe Dalvik-cache",
                              "- Wipe battery stats",
                              "- Wipe rotate settings",
-                             NULL };
+                             "- Wipe Sdcard",
+			     "- Wipe EMMC",
+			     NULL };
 
     ui_start_menu(headers, items);
     int selected = 0;
@@ -1258,6 +1436,38 @@ show_menu_wipe()
                         ui_print("Rotate settings wipe complete!\n\n");
                     } else {
                         ui_print("Rotate settings wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+		case ITEM_WIPE_SDCARD:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe Sdcard");
+                    ui_print("\nThis is Irreversible!!!\n");
+		    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_mysd = ui_wait_key();
+                    if (confirm_wipe_mysd == BTN_MOUSE) {
+                        erase_root("SDCARD:");
+                        ui_print("/Sdcard wipe complete!\n\n");
+                    } else {
+                        ui_print("/Sdcard wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+		case ITEM_WIPE_EMMC:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe Emmc");
+                    ui_print("\nThis is Irreversible!!!\n");
+		    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_emmc = ui_wait_key();
+                    if (confirm_wipe_emmc == BTN_MOUSE) {
+                        erase_root("EMMC:");
+                        ui_print("/Emmc wipe complete!\n\n");
+                    } else {
+                        ui_print("/Emmc wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
@@ -1577,7 +1787,7 @@ show_menu_other()
 			     "- Move recovery.log to SD",
                              "- Debugging Test Key Codes",
 			     //"- Check Battery Level",
-				NULL };
+			     NULL };
 
     ui_start_menu(headers, items);
     int selected = 0;
@@ -1632,6 +1842,9 @@ show_menu_other()
 		case ITEM_OTHER_KEY_TEST:
 				key_logger_test();
 				break;
+
+		
+		
 /*
 		case ITEM_OTHER_BATTERY_LEVEL:
 				check_my_battery_level();
@@ -1915,11 +2128,12 @@ ui_start_menu(headers, items);
 				if (confirm_formext4 == BTN_MOUSE) {
 	                          // ui_print("\nFormatting data as ext4...\n");     
 				   erase_root("DATA:");
+ 				   erase_root("DATADATA:");
 				run_script("\nFormat ext4",
 					 "\nFormatting ext4 : ",
 					 "/sbin/partext4 formatext4",
 				  	 "\nUnable to execute partext4!\n(%s)\n",
-				  	 "\nError : Run 'partext4 formatext4' via adb!\n\n",
+				  	 "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				  	 "\nExt4 format complete!\n\n",
 				  	 "\nExt4 format aborted!\n\n");
 				  // ui_print("\nFormatting data as ext4 complete.\n\n");
@@ -1940,11 +2154,12 @@ ui_start_menu(headers, items);
 				if (confirm_formext3 == BTN_MOUSE) {
 	                          // ui_print("\nReformatting data as ext3...\n");     
 				   erase_root("DATA:");
+				   erase_root("DATADATA:");
 				run_script("\nFormat ext3",
 					 "\nFormatting ext3 : ",
 					 "/sbin/partext4 reformatext3",
 				  	 "\nUnable to execute partext4!\n(%s)\n",
-				  	 "\nError : Run 'partext4 reformatext3' via adb!\n\n",
+				  	 "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				  	 "\nExt3 re-format complete!\n\n",
 				  	 "\nExt3 re-format aborted!\n\n");
 				} else {
@@ -2048,6 +2263,275 @@ show_menu_usb()
 	 }	
 	}
 
+static void
+show_menu_dualboot()
+{
+
+    static char* headers[] = { "Choose DualBoot item;",
+			       "or press VOL-DOWN to return",
+			       "",
+			       NULL };
+
+
+// these constants correspond to elements of the items[] list.
+#define ITEM_DUALBOOT_IB   0
+#define ITEM_DUALBOOT_PB   1
+#define ITEM_DUALBOOT_BCK  2
+#define ITEM_DUALBOOT_RES  3
+#define ITEM_DUALBOOT_WIPEALL 4
+#define ITEM_DUALBOOT_WIPECACHE 5
+#define ITEM_DUALBOOT_WIPEDATA 6
+#define ITEM_DUALBOOT_WIPESYSTEM 7
+#define ITEM_DUALBOOT_SETUPPB 8
+#define ITEM_DUALBOOT_SETUPIB 9
+
+
+    static char* items[] = { "- DualBoot flash internal boot",
+			     "- DualBoot flash phone boot",
+			     "- DualBoot backup",
+			     "- DualBoot restore",
+			     "- DualBoot Wipe-All",
+			     "- DualBoot Wipe-Cache",
+			     "- DualBoot Wipe-Data",
+			     "- DualBoot Wipe-System",
+			     "- Install required items phone rom",
+			     "- Install required items internal rom",	
+                             NULL };
+
+    ui_start_menu(headers, items);
+    int selected = 0;
+    int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        int key = ui_wait_key();
+        int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
+        int visible = ui_text_visible();
+
+        if (key == KEY_VOLUMEDOWN) {
+            break;
+        } else if ((key == KEY_DOWN) && visible) {
+            ++selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == KEY_UP) && visible) {
+            --selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == BTN_MOUSE) && visible ) {
+            chosen_item = selected;
+        }
+
+        if (chosen_item >= 0) {
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+
+            switch (chosen_item) {
+		              
+		
+		case ITEM_DUALBOOT_BCK:
+		    ui_print("\n\n*** WARNING ***");
+		    ui_print("\nDualBoot img backups require");
+		    ui_print("\nlots of SDcard space and may take a few");
+		    ui_print("\nminutes to back up!\n\n");
+		       run_script("\nBackup DualBoot img files?",
+				   "\nPerforming backup : ",
+				   "/sbin/dualboot.sh backup",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nBackup complete!\n\n",
+				   "\nBackup aborted!\n\n");
+                    	
+			run_script("\nPreparing to run cleanup",
+				   "\nRunning cleanup : ",
+				   "/sbin/dualboot.sh cleanup",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nCleanup complete!\n\n",
+				   "\nCleanup aborted!\n\n");
+
+			break;
+
+
+                case ITEM_DUALBOOT_RES:
+                    	choose_dualboot_folder();
+	                run_script("\nPreparing to run cleanup",
+				   "\nRunning cleanup : ",
+				   "/sbin/dualboot.sh cleanup",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nCleanup complete!\n\n",
+				   "\nCleanup aborted!\n\n");
+			
+			break;
+
+                case ITEM_DUALBOOT_IB:
+			ui_print("\nFlash Internal Boot");
+                    	ui_print("\nthen manually reboot to boot internal rom\n\n");
+			run_script("\nPreparing to flash internal-boot",
+				   "\nFlashing internal-boot : ",
+				   "/sbin/dualboot.sh internal-boot",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nFlashing internal-boot complete!\n\n",
+				   "\nFlashing internal-boot aborted!\n\n");
+			break;
+
+		case ITEM_DUALBOOT_PB:
+			ui_print("\nFlash Normal Phone Boot");
+                    	ui_print("\nthen manually reboot to boot phone rom\n\n");
+			run_script("\nPreparing to flash phone-boot",
+				   "\nFlashing phone-boot : ",
+				   "/sbin/dualboot.sh phone-boot",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nFlashing phone-boot complete!\n\n",
+				   "\nFlashing phone-boot aborted!\n\n");
+			break;
+                
+		case ITEM_DUALBOOT_SETUPPB:
+			ui_print("\nInstall Phone Boot Needed items\n");
+                    	ui_print("\nYou must have Phone Boot.img installed to run!\n\n");
+			run_script("\nSetup Phone Boot",
+				   "\n Setting up Phone Boot Items: ",
+				   "/sbin/dualboot.sh setup-phone",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nSetup phone boot items complete!\n\n",
+				   "\nSetup phone boot items aborted!\n\n");
+			break;
+
+		case ITEM_DUALBOOT_SETUPIB:
+			ui_print("\nInstall Internal Boot Needed items\n");
+                    	ui_print("\nYou must have Internal Boot.img installed to run!\n\n");
+			run_script("\nSetup Internal Boot",
+				   "\n Setting up Internal Boot Items: ",
+				   "/sbin/dualboot.sh setup-internal",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nSetup internal boot items complete!\n\n",
+				   "\nSetup internal boot items aborted!\n\n");
+			
+			run_script("\nPreparing to run cleanup",
+				   "\nRunning cleanup : ",
+				   "/sbin/dualboot.sh cleanup",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nCleanup complete!\n\n",
+				   "\nCleanup aborted!\n\n");
+			break;
+             
+            case ITEM_DUALBOOT_WIPEALL:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe ALL DualBoot");
+                        run_script("\nWipe DualBoot Cache",
+				   "\nWiping DualBoot Cache : ",
+				   "/sbin/dualboot.sh wipe-cacheext",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nDualBoot cache wipe complete!\n\n",
+				   "\nDualBoot cache wipe aborted!\n\n");
+			
+			run_script("\nWipe DualBoot Data",
+				   "\nWiping DualBoot Data : ",
+				   "/sbin/dualboot.sh wipe-dataext",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nDualBoot data wipe complete!\n\n",
+				   "\nDualBoot data wipe aborted!\n\n");
+
+			run_script("\nWipe DualBoot System",
+				   "\nWiping DualBoot System : ",
+				   "/sbin/dualboot.sh wipe-systemext",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nDualBoot system wipe complete!\n\n",
+				   "\nDualBoot system wipe aborted!\n\n");
+
+			run_script("\nPreparing to run cleanup",
+				   "\nRunning cleanup : ",
+				   "/sbin/dualboot.sh cleanup",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nCleanup complete!\n\n",
+				   "\nCleanup aborted!\n\n");
+                                        
+                    break;
+
+                case ITEM_DUALBOOT_WIPEDATA:
+                    	run_script("\nWipe DualBoot Data",
+				   "\nWiping DualBoot Data : ",
+				   "/sbin/dualboot.sh wipe-dataext",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nDualBoot data wipe complete!\n\n",
+				   "\nDualBoot data wipe aborted!\n\n");
+
+			run_script("\nPreparing to run cleanup",
+				   "\nRunning cleanup : ",
+				   "/sbin/dualboot.sh cleanup",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nCleanup complete!\n\n",
+				   "\nCleanup aborted!\n\n");
+                    break;
+
+                case ITEM_DUALBOOT_WIPECACHE:
+                    	run_script("\nWipe DualBoot Cache",
+				   "\nWiping DualBoot Cache : ",
+				   "/sbin/dualboot.sh wipe-cacheext",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nDualBoot cache wipe complete!\n\n",
+				   "\nDualBoot cache wipe aborted!\n\n");
+			
+			run_script("\nPreparing to run cleanup",
+				   "\nRunning cleanup : ",
+				   "/sbin/dualboot.sh cleanup",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nCleanup complete!\n\n",
+				   "\nCleanup aborted!\n\n");
+                    break;
+
+                case ITEM_DUALBOOT_WIPESYSTEM:
+                    	run_script("\nWipe DualBoot System",
+				   "\nWiping DualBoot System : ",
+				   "/sbin/dualboot.sh wipe-systemext",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nDualBoot system wipe complete!\n\n",
+				   "\nDualBoot system wipe aborted!\n\n");
+
+			run_script("\nPreparing to run cleanup",
+				   "\nRunning cleanup : ",
+				   "/sbin/dualboot.sh cleanup",
+				   "\nuNnable to execute dualboot.sh!\n(%s)\n",
+				   "\nOops... something went wrong!\nPlease check the recovery log!\n",
+				   "\nCleanup complete!\n\n",
+				   "\nCleanup aborted!\n\n");
+                    break;
+	}
+
+            // if we didn't return from this function to reboot, show
+            // the menu again.
+            ui_start_menu(headers, items);
+            selected = 0;
+            chosen_item = -1;
+
+            finish_recovery(NULL);
+            ui_reset_progress();
+
+            // throw away keys pressed while the command was running,
+            // so user doesn't accidentally trigger menu items.
+            ui_clear_key_queue();
+        }
+    }
+}
+
+
+
+
 
 
 static void
@@ -2070,7 +2554,8 @@ prompt_and_wait()
 #define ITEM_MOUNT	   6
 #define ITEM_OTHER         7
 #define ITEM_EXT4DATA      8
-#define ITEM_POWEROFF      9
+#define ITEM_DUALBOOT      9
+#define ITEM_POWEROFF      10
 
 
     static char* items[] = { "- Reboot system now",
@@ -2082,6 +2567,7 @@ prompt_and_wait()
                              "- Mounts",
 			     "- Other",
                              "- Format /data Ext4|Ext3",
+			     "- DualBoot",
 			     "- Power off",
                              NULL };
 
@@ -2150,9 +2636,14 @@ prompt_and_wait()
 		case ITEM_OTHER:
                     show_menu_other();
         	    break; 
-
+		
 	        case ITEM_EXT4DATA:
 			show_menu_ext4_data();
+			break;
+		
+		
+		case ITEM_DUALBOOT:
+			show_menu_dualboot();
 			break;
 
 		case ITEM_POWEROFF:
