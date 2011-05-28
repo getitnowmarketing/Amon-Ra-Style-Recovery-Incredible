@@ -50,14 +50,14 @@ static const char g_package_file[] = "@\0g_package_file";
 
 static RootInfo g_roots[] = {
     { "BOOT:", g_mtd_device, NULL, "boot", NULL, g_raw, NULL },
-    { "CACHE:", g_mtd_device, NULL, "cache", "/cache", "yaffs2", NULL },
-    { "DATA:", "/dev/block/mmcblk0p1", NULL, NULL, "/data", "ext4", NULL },
+    { "CACHE:","/dev/block/mmcblk0p2", NULL, NULL, "/cache", "auto", NULL },
+    { "DATA:", "/dev/block/mmcblk0p1", NULL, NULL, "/data", "auto", NULL },
     { "DATADATA:", g_mtd_device, NULL, "datadata", "/datadata", "yaffs2", NULL },
     { "MISC:", g_mtd_device, NULL, "misc", NULL, g_raw, NULL },
     { "PACKAGE:", NULL, NULL, NULL, NULL, g_package_file, NULL },
     { "RECOVERY:", g_mtd_device, NULL, "recovery", "/", g_raw, NULL },
     { "SDCARD:", "/dev/block/mmcblk1p1", "/dev/block/mmcblk1", NULL, "/sdcard", "vfat", NULL },
-    { "SDEXT:", "/dev/block/mmcblk1p2", NULL, NULL, "/sd-ext", "ext4", NULL },
+    { "SDEXT:", "/dev/block/mmcblk1p2", NULL, NULL, "/sd-ext", "auto", NULL },
     { "SYSTEM:", g_mtd_device, NULL, "system", "/system", "yaffs2", NULL },
     { "MBM:", g_mtd_device, NULL, "mbm", NULL, g_raw, NULL },
     { "TMP:", NULL, NULL, NULL, "/tmp", NULL, NULL },
