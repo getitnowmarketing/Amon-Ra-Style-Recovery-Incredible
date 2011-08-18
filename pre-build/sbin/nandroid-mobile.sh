@@ -186,7 +186,7 @@ esac
 ECHO=echo
 OUTPUT=""
 
-for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -l nodata -l nosystem -l nocache -l nomisc -l nosplash1 -l nosplash2 -l subname: -l backup -l restore -l compress -l getupdate -l delete -l path -l webget: -l webgettarget: -l nameserver: -l nameserver2: -l bzip2: -l defaultinput -l autoreboot -l autoapplyupdate -l ext -l android_secure -l save: -l switchto: -l listbackup -l listupdate -l silent -l quiet -l help -- "cbruds:p:eaql" "$@"); do
+for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -l nodata -l nosystem -l nocache -l nomisc -l nosplash1 -l nosplash2 -l subname: -l backup -l restore -l compress -l getupdate -l delete -l path -l webget: -l webgettarget: -l nameserver: -l nameserver2: -l bzip2: -l defaultinput -l autoreboot -l autoapplyupdate -l ext -l android_secure -l android_secure_emmc -l save: -l switchto: -l listbackup -l listupdate -l silent -l quiet -l help -- "cbruds:p:eaql" "$@"); do
     case $option in
         --silent)
             ECHO=echo2log
@@ -244,6 +244,9 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             $ECHO "                           the other partitions being backed up, to easily switch roms."
             $ECHO ""
             $ECHO "-a | --android_secure      Preserve the contents of /sdcard/.android_secure along with"
+            $ECHO "                           the other partitions being backed up, to easily switch roms."
+            $ECHO ""
+	    $ECHO "-a | --android_secure_emmc      Preserve the contents of /sdcard/.android_secure along with"
             $ECHO "                           the other partitions being backed up, to easily switch roms."
             $ECHO ""
             $ECHO "-r | --restore             Will restore the last made backup which matches --subname"
@@ -396,7 +399,15 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             ANDROID_SECURE=1
             shift
             ;;
-        --restore)
+        -i)
+            ANDROID_SECURE_EMMC=1
+            shift
+            ;;
+        --android_secure_emmc)
+            ANDROID_SECURE_EMMC=1
+            shift
+            ;;
+	--restore)
             RESTORE=1
             #$ECHO "restore"
             shift
@@ -909,11 +920,14 @@ if [ "$RESTORE" == 1 ]; then
 		if [ `ls ext* 2>/dev/null | wc -l` == 0 ]; then
                     EXT=0
                 fi
-		# Amon_RA : If there's no android_secure backup set android_secure to 0 so android_secure restore doesn't start                
+		# GNM : If there's no android_secure backup set android_secure to 0 so android_secure restore doesn't start                
 		if [ `ls android_secure* 2>/dev/null | wc -l` == 0 ]; then
                     ANDROID_SECURE=0
                 fi
-
+		# GNM : If there's no android_secure backup set android_secure to 0 so android_secure restore doesn't start                
+		if [ `ls android_emmc_secure* 2>/dev/null | wc -l` == 0 ]; then
+                    ANDROID_SECURE_EMMC=0
+                fi
 
 		for image in boot recovery; do
                     if [ "$NOBOOT" == "1" -a "$image" == "boot" ]; then
@@ -1033,6 +1047,58 @@ if [ "$RESTORE" == 1 ]; then
 		fi
 
 
+		if [ "$ANDROID_SECURE_EMMC" == 1 ]; then
+			# GNM : Check if there's an emmc partition before starting to restore    		
+			if [ -e /dev/block/mmcblk0p3 ]; then
+	                    $ECHO "Restoring the android_secure contents on emmc."
+	                    CWD=`pwd`
+	                    cd /
+
+	                    if [ `mount | grep /emmc | wc -l` == 0 ]; then
+	                        mount /emmc
+	                    fi
+
+	                    cd $CWD
+	                    CHECK=`mount | grep /emmc`
+
+	                    if [ "$CHECK" == "" ]; then
+	                        $ECHO "Warning: --android_secure specified but unable to mount the android_secure partition."
+	                        $ECHO "Warning: your phone may be in an inconsistent state on reboot."
+	                        exit 1
+	                    else
+	                        CWD=`pwd`
+	                        cd /emmc
+	                        # Depending on whether the android_secure backup is compressed we do either or.
+	                        if [ -e $RESTOREPATH/android_emmc_secure.tar ]; then 
+	                            rm -rf .android_secur* 2>/dev/null
+	                            tar -x$TARFLAGS -f $RESTOREPATH/android_emmc_secure.tar
+	                        else
+	                            if [ -e $RESTOREPATH/android_emmc_secure.tgz ]; then
+	                                rm -rf .android_secur* 2>/dev/null
+	                                tar -x$TARFLAGS -zf $RESTOREPATH/android_emmc_secure.tgz
+	                            else
+	                                if [ -e $RESTOREPATH/android_emmc_secure.tar.bz2 ]; then
+	                                    rm -rf .android_secur* 2>/dev/null
+	                                    tar -x$TARFLAGS -jf $RESTOREPATH/android_emmc_secure.tar.bz2
+	                                else
+	                                    $ECHO "Warning: --android_secure specified but cannot find the android_secure backup."
+	                                   # $ECHO "Warning: your phone may be in an inconsistent state on reboot."
+	                                fi
+	                            fi
+	                        fi
+	                        cd $CWD
+	                        sync
+	                        umount /emmc
+	
+	                    fi
+			else
+	                        # Amon_RA : Just display a warning
+				$ECHO "Warning: --android_secure specified but android_secure partition present on sdcard"
+	                        # $ECHO "Warning: your phone may be in an inconsistent state on reboot."     
+                	fi
+		fi
+	
+
 		$ECHO "Restore done"
 		exit 0
 fi
@@ -1088,6 +1154,9 @@ if [ "$EXT" == 1 ]; then
 fi
 if [ "$ANDROID_SECURE" == 1 ]; then
     BACKUPLEGEND=$BACKUPLEGEND"A"
+fi
+if [ "$ANDROID_SECURE_EMMC" == 1 ]; then
+    BACKUPLEGEND=$BACKUPLEGEND"I"
 fi
 if [ "$NOMISC" == 0 ]; then
     BACKUPLEGEND=$BACKUPLEGEND"M"
@@ -1311,6 +1380,40 @@ if [ "$ANDROID_SECURE" == 1 ]; then
         fi
         cd $CWD
 fi
+
+# Backing up the /emmc/.android_secure, not really for the backup but to switch ROMS and apps at the same time.
+
+if [ "$ANDROID_SECURE_EMMC" == 1 ]; then
+    $ECHO "Storing the android_secure contents in the backup folder."
+
+    CHECK=`mount | grep /emmc`
+    if [ "$CHECK" == "" ]; then
+        mount /emmc 2>/dev/null
+    fi
+    
+    CHECK=`mount | grep /emmc`
+    if [ "$CHECK" == "" ]; then
+          $ECHO "Warning: --android_secure specified but unable to mount the emmc partition."
+          exit 1
+    else
+        
+        CWD=`pwd`
+        cd /emmc
+        # Depending on the whether we want it compressed we do either or.
+        if [ "$COMPRESS" == 0 ]; then 
+            tar -cvf $DESTDIR/android_emmc_secure.tar .android_secur*
+        else
+            if [ "$DEFAULTCOMPRESSOR" == "bzip2" ]; then
+                tar -cvjf $DESTDIR/android_emmc_secure.tar.bz2 .android_secur*
+            else
+                tar -cvzf $DESTDIR/android_emmc_secure.tgz .android_secur*
+            fi
+        fi
+        cd $CWD
+        umount /emmc
+    fi
+fi
+
 
 # 7.
 $ECHO -n "generating md5sum file..."

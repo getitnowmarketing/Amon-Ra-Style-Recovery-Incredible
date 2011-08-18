@@ -830,7 +830,8 @@ show_menu_nandroid()
 				"- [X] cache",
 				"- [ ] recovery",
 				"- [ ] sd-ext",
-				"- [ ] .android_secure",
+				"- [ ] .android_secure_sd",
+				"- [ ] .android_secure_emmc",
 				"- Perform Backup",
 		NULL};
 
@@ -841,7 +842,8 @@ show_menu_nandroid()
 				"- [X] cache",
 				"- [X] recovery",
 				"- [X] sd-ext",
-				"- [X] .android_secure",
+				"- [X] .android_secure_sd",
+				"- [X] .android_secure_emmc",
 				"- Perform Backup",
 		NULL};
 	
@@ -852,7 +854,8 @@ show_menu_nandroid()
 				"- [ ] cache",
 				"- [ ] recovery",
 				"- [ ] sd-ext",
-				"- [ ] .android_secure",
+				"- [ ] .android_secure_sd",
+				"- [ ] .android_secure_emmc",
 				"- Perform Backup",
                	NULL};
 
@@ -904,7 +907,8 @@ show_menu_nandroid()
 
 
 				if (items[i]=="- [X] sd-ext") strcat(nandroid_command, " -e");
-				if (items[i]=="- [X] .android_secure") strcat(nandroid_command, " -a");
+				if (items[i]=="- [X] .android_secure_sd") strcat(nandroid_command, " -a");
+				if (items[i]=="- [X] .android_secure_emmc") strcat(nandroid_command, " -i");
 				if (items[i]=="- [ ] recovery") strcat(nandroid_command, " --norecovery");
 				if (items[i]=="- [ ] boot") strcat(nandroid_command, " --noboot");
 				if (items[i]=="- [ ] data") strcat(nandroid_command, " --nodata");
@@ -1063,15 +1067,19 @@ show_menu_wipe()
 #define ITEM_WIPE_DALVIK   5
 #define ITEM_WIPE_BAT      6
 #define ITEM_WIPE_ROT      7
+#define ITEM_WIPE_SDCARD   8
+#define ITEM_WIPE_EMMC     9
 
     static char* items[] = { "- Wipe ALL data/factory reset",
 			     "- Wipe /data",
                              "- Wipe /cache",
-			     "- Wipe /sdcard/.android_secure",
+			     "- Wipe .android_secure",
                              "- Wipe /sd-ext",
                              "- Wipe Dalvik-cache",
                              "- Wipe battery stats",
                              "- Wipe rotate settings",
+			     "- Wipe Sdcard",
+			     "- Wipe EMMC",
                              NULL };
 
     ui_start_menu(headers, items);
@@ -1114,6 +1122,7 @@ show_menu_wipe()
                         erase_root("DATA:");
                         erase_root("DATADATA:");
 			erase_root("SDCARD:.android_secure");
+			erase_root("EMMC:.android_secure");
                         //erase_root("CACHE:");
 			format_non_mtd_device("CACHE:");
 			ui_print("Formatting CACHE...\n\n");
@@ -1173,15 +1182,16 @@ show_menu_wipe()
 
                 case ITEM_WIPE_SECURE:
                     ui_clear_key_queue();
-		    ui_print("\nWipe /sdcard/.android_secure");
+		    ui_print("\nWipe /SDcard & /EMMC .android_secure");
                     ui_print("\nPress Trackball to confirm,");
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_secure = ui_wait_key();
                     if (confirm_wipe_secure == BTN_MOUSE) {
                         erase_root("SDCARD:.android_secure");
-                        ui_print("/sdcard/.android_secure wipe complete!\n\n");
+			erase_root("EMMC:.android_secure");
+                        ui_print(".android_secure wipe complete!\n\n");
                     } else {
-                        ui_print("/sdcard/.android_secure wipe aborted!\n\n");
+                        ui_print(".android_secure wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
@@ -1258,6 +1268,38 @@ show_menu_wipe()
                         ui_print("Rotate settings wipe complete!\n\n");
                     } else {
                         ui_print("Rotate settings wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+		case ITEM_WIPE_SDCARD:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe Sdcard");
+                    ui_print("\nThis is Irreversible!!!\n");
+		    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_mysd = ui_wait_key();
+                    if (confirm_wipe_mysd == BTN_MOUSE) {
+                        erase_root("SDCARD:");
+                        ui_print("/Sdcard wipe complete!\n\n");
+                    } else {
+                        ui_print("/Sdcard wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+
+		case ITEM_WIPE_EMMC:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe Emmc");
+                    ui_print("\nThis is Irreversible!!!\n");
+		    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_emmc = ui_wait_key();
+                    if (confirm_wipe_emmc == BTN_MOUSE) {
+                        erase_root("EMMC:");
+                        ui_print("/Emmc wipe complete!\n\n");
+                    } else {
+                        ui_print("/Emmc wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
@@ -1915,11 +1957,12 @@ ui_start_menu(headers, items);
 				if (confirm_formext4 == BTN_MOUSE) {
 	                          // ui_print("\nFormatting data as ext4...\n");     
 				   erase_root("DATA:");
+				   erase_root("DATADATA:");
 				run_script("\nFormat ext4",
 					 "\nFormatting ext4 : ",
 					 "/sbin/partext4 formatext4",
 				  	 "\nUnable to execute partext4!\n(%s)\n",
-				  	 "\nError : Run 'partext4 formatext4' via adb!\n\n",
+				  	 "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				  	 "\nExt4 format complete!\n\n",
 				  	 "\nExt4 format aborted!\n\n");
 				  // ui_print("\nFormatting data as ext4 complete.\n\n");
@@ -1940,11 +1983,12 @@ ui_start_menu(headers, items);
 				if (confirm_formext3 == BTN_MOUSE) {
 	                          // ui_print("\nReformatting data as ext3...\n");     
 				   erase_root("DATA:");
+				   erase_root("DATADATA:");
 				run_script("\nFormat ext3",
 					 "\nFormatting ext3 : ",
 					 "/sbin/partext4 reformatext3",
 				  	 "\nUnable to execute partext4!\n(%s)\n",
-				  	 "\nError : Run 'partext4 reformatext3' via adb!\n\n",
+				  	 "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				  	 "\nExt3 re-format complete!\n\n",
 				  	 "\nExt3 re-format aborted!\n\n");
 				} else {
