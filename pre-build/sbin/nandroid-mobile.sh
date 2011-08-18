@@ -246,7 +246,7 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             $ECHO "-a | --android_secure      Preserve the contents of /sdcard/.android_secure along with"
             $ECHO "                           the other partitions being backed up, to easily switch roms."
             $ECHO ""
-	    $ECHO "-a | --android_secure_emmc      Preserve the contents of /sdcard/.android_secure along with"
+	    $ECHO "--android_secure_emmc      Preserve the contents of /emmc/.android_secure along with"
             $ECHO "                           the other partitions being backed up, to easily switch roms."
             $ECHO ""
             $ECHO "-r | --restore             Will restore the last made backup which matches --subname"
@@ -397,10 +397,6 @@ for option in $(getopt --name="nandroid-mobile v2.2.2" -l norecovery -l noboot -
             ;;
         --android_secure)
             ANDROID_SECURE=1
-            shift
-            ;;
-        -i)
-            ANDROID_SECURE_EMMC=1
             shift
             ;;
         --android_secure_emmc)
@@ -953,6 +949,12 @@ if [ "$RESTORE" == 1 ]; then
                             $ECHO ""
                             continue
                         fi
+			if [ "$NODATA" == "1" -a "$image" == "datadata" ]; then
+                            $ECHO ""
+                            $ECHO "Not restoring datadata image!"
+                            $ECHO ""
+                            continue
+                        fi
                         if [ "$NOSYSTEM" == "1" -a "$image" == "system" ]; then
                             $ECHO ""
                             $ECHO "Not restoring system image!"
@@ -1313,7 +1315,13 @@ for image in system data cache datadata; do
                 $ECHO "Dump of the data partition suppressed."
                 continue
             fi
-            ;;
+	    ;;
+        datadata)
+            if [ "$NODATA" == 1 ]; then
+                $ECHO "Dump of the datadata partition suppressed."
+                continue
+            fi
+	    ;;
         cache)
             if [ "$NOCACHE" == 1 ]; then
                 $ECHO "Dump of the cache partition suppressed."
@@ -1362,25 +1370,6 @@ if [ "$EXT" == 1 ]; then
     fi
 fi
 
-# Backing up the /sdcard/.android_secure, not really for the backup but to switch ROMS and apps at the same time.
-
-if [ "$ANDROID_SECURE" == 1 ]; then
-    $ECHO "Storing the /sdcard/.android_secure contents in the backup folder."      
-        CWD=`pwd`
-        cd /sdcard
-        # Depending on the whether we want it compressed we do either or.
-        if [ "$COMPRESS" == 0 ]; then 
-            tar -cvf $DESTDIR/android_secure.tar ./.android_secure*
-        else
-            if [ "$DEFAULTCOMPRESSOR" == "bzip2" ]; then
-                tar -cvjf $DESTDIR/android_secure.tar.bz2 ./.android_secure*
-            else
-                tar -cvzf $DESTDIR/android_secure.tgz ./.android_secure*
-            fi
-        fi
-        cd $CWD
-fi
-
 # Backing up the /emmc/.android_secure, not really for the backup but to switch ROMS and apps at the same time.
 
 if [ "$ANDROID_SECURE_EMMC" == 1 ]; then
@@ -1413,6 +1402,27 @@ if [ "$ANDROID_SECURE_EMMC" == 1 ]; then
         umount /emmc
     fi
 fi
+
+# Backing up the /sdcard/.android_secure, not really for the backup but to switch ROMS and apps at the same time.
+
+if [ "$ANDROID_SECURE" == 1 ]; then
+    $ECHO "Storing the /sdcard/.android_secure contents in the backup folder."      
+        CWD=`pwd`
+        cd /sdcard
+        # Depending on the whether we want it compressed we do either or.
+        if [ "$COMPRESS" == 0 ]; then 
+            tar -cvf $DESTDIR/android_secure.tar ./.android_secure*
+        else
+            if [ "$DEFAULTCOMPRESSOR" == "bzip2" ]; then
+                tar -cvjf $DESTDIR/android_secure.tar.bz2 ./.android_secure*
+            else
+                tar -cvzf $DESTDIR/android_secure.tgz ./.android_secure*
+            fi
+        fi
+        cd $CWD
+fi
+
+
 
 
 # 7.

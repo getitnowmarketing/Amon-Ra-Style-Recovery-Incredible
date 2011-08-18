@@ -888,7 +888,7 @@ show_menu_nandroid()
             // on the screen.
             ui_end_menu();
 
-            if (chosen_item < 7) {
+            if (chosen_item < 8) {
 		   // Rebuild items
 		   if (items[chosen_item]==items_in[chosen_item]) {
 	               items[chosen_item]=items_out[chosen_item];
@@ -908,7 +908,7 @@ show_menu_nandroid()
 
 				if (items[i]=="- [X] sd-ext") strcat(nandroid_command, " -e");
 				if (items[i]=="- [X] .android_secure_sd") strcat(nandroid_command, " -a");
-				if (items[i]=="- [X] .android_secure_emmc") strcat(nandroid_command, " -i");
+				if (items[i]=="- [X] .android_secure_emmc") strcat(nandroid_command, " --android_secure_emmc");
 				if (items[i]=="- [ ] recovery") strcat(nandroid_command, " --norecovery");
 				if (items[i]=="- [ ] boot") strcat(nandroid_command, " --noboot");
 				if (items[i]=="- [ ] data") strcat(nandroid_command, " --nodata");
