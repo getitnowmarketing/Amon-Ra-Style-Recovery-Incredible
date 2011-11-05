@@ -43,6 +43,7 @@
 #include "roots.h"
 
 #include "extracommands.h"
+#include "recovery_ui_keys.h"
 
 static const struct option OPTIONS[] = {
   { "send_intent", required_argument, NULL, 's' },
@@ -60,7 +61,8 @@ static const char *NANDROID_PATH = "SDCARD:/nandroid/";
 #define SDCARD_PATH_LENGTH 7
 #define NANDROID_PATH_LENGTH 17
 static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
-
+static const char *CLOCKWORK_PATH = "SDCARD:/clockworkmod/backup/";
+#define CLOCKWORK_PATH_LENGTH 28
 void free_string_array(char** array);
 char* choose_file_menu(const char* directory, const char* fileExtensionOrDirectory, const char* headers[]);
 char** gather_files(const char* directory, const char* fileExtensionOrDirectory, int* numFiles);
@@ -308,7 +310,7 @@ static void
 choose_nandroid_file(const char *nandroid_folder)
 {
     static char* headers[] = { "Choose nandroid-backup,",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
                                "",
                                NULL };
 
@@ -399,15 +401,15 @@ choose_nandroid_file(const char *nandroid_folder)
         int key = ui_wait_key();
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -419,10 +421,10 @@ choose_nandroid_file(const char *nandroid_folder)
             ui_print("\nRestore ");
             ui_print(list[chosen_item]);
             ui_clear_key_queue();
-            ui_print(" ?\nPress Trackball to confirm,");
+            ui_print(" ?\nPress %s to confirm,", CONFIRM);
             ui_print("\nany other key to abort.\n");
             int confirm_apply = ui_wait_key();
-            if (confirm_apply == BTN_MOUSE) {
+            if (confirm_apply == SELECT) {
                       
                             ui_print("\nRestoring : ");
        		            char nandroid_command[200]="/sbin/nandroid-mobile.sh -r -e -a --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput -s ";
@@ -470,12 +472,187 @@ out:
     free(list);
 }
 
+static void
+choose_clockwork_file()
+{
+    static char* headers[] = { "Choose clockworkmod nandroid-backup,",
+			       UNCONFIRM_TXT,
+                               "",
+                               NULL };
+
+    char path[PATH_MAX] = "";
+    DIR *dir;
+    struct dirent *de;
+    char **files;
+    char **list;
+    int total = 0;
+    int i;
+
+    if (ensure_root_path_mounted(CLOCKWORK_PATH) != 0) {
+        LOGE("Can't mount %s\n", CLOCKWORK_PATH);
+        return;
+    }
+
+    if (translate_root_path(CLOCKWORK_PATH, path, sizeof(path)) == NULL) {
+        LOGE("Bad path %s", path);
+        return;
+    }
+
+    dir = opendir(path);
+    if (dir == NULL) {
+        LOGE("Couldn't open directory %s", path);
+        return;
+    }
+
+    /* count how many files we're looking at */
+    while ((de = readdir(dir)) != NULL) {
+        char *extension = strrchr(de->d_name, '.');
+	if (de->d_name[0] == '.') {
+            continue;
+        } else {
+            total++;
+        }
+    }
+
+    if (total==0) {
+        LOGE("No clockworkmod nandroid-backup files found\n");
+    		if (closedir(dir) < 0) {
+		  LOGE("Failure closing directory %s", path);
+	          goto out;
+    		}
+        return;
+    }
+
+    /* allocate the array for the file list menu (+1 for exit) */
+    files = (char **) malloc((total + 1) * sizeof(*files));
+    files[total] = NULL;
+
+    
+
+    list = (char **) malloc((total + 1) * sizeof(*files));
+    list[total] = NULL;
+
+    
+
+    /* set it up for the second pass */
+    rewinddir(dir);
+
+    /* put the names in the array for the menu */
+    i = 0;
+    while ((de = readdir(dir)) != NULL) {
+        if (de->d_name[0] == '.') {
+            continue;
+        } else {
+
+            files[i] = (char *) malloc(CLOCKWORK_PATH_LENGTH + strlen(de->d_name) + 1);
+            strcpy(files[i], CLOCKWORK_PATH);
+            strcat(files[i], de->d_name);
+
+            list[i] = (char *) malloc(strlen(de->d_name) + 1);
+            strcpy(list[i], de->d_name);
+
+            i++;
+
+        }
+    }
+
+    /* close directory handle */
+    if (closedir(dir) < 0) {
+        LOGE("Failure closing directory %s", path);
+        goto out;
+    }
+
+    ui_start_menu(headers, list);
+    int selected = 0;
+    int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        int key = ui_wait_key();
+        int visible = ui_text_visible();
+
+        if (key == GO_BACK) {
+            break;
+        } else if ((key == DN) && visible) {
+            ++selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == UP) && visible) {
+            --selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == SELECT) && visible ) {
+            chosen_item = selected;
+        }
+
+       
+
+        
+
+	if (chosen_item >= 0) {
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+
+            ui_print("\nRestore Clockwork Backup ");
+            ui_print(list[chosen_item]);
+            ui_clear_key_queue();
+            ui_print(" ?\nPress %s to confirm,", CONFIRM);
+            ui_print("\nany other key to abort.\n");
+            int confirm_apply = ui_wait_key();
+            if (confirm_apply == SELECT) {
+                      
+                            ui_print("\nRestoring : ");
+       		            char cw_nandroid_command[200]="/sbin/nandroid-mobile.sh -r -e -a --cwmcompat --norecovery --nomisc --nosplash1 --nosplash2 --defaultinput -s ";
+
+			    strlcat(cw_nandroid_command, list[chosen_item], sizeof(cw_nandroid_command));
+
+                            pid_t pid = fork();
+                            if (pid == 0) {
+                                char *args[] = {"/sbin/sh", "-c", cw_nandroid_command , "1>&2", NULL};
+                                execv("/sbin/sh", args);
+                                fprintf(stderr, "\nCan't run nandroid-mobile.sh\n(%s)\n", strerror(errno));
+        	                _exit(-1);
+                            }
+
+                            int status3;
+
+                            while (waitpid(pid, &status3, WNOHANG) == 0) {
+                                ui_print(".");
+                                sleep(1);
+                            } 
+                            ui_print("\n");
+
+                           if (!WIFEXITED(status3) || (WEXITSTATUS(status3) != 0)) {
+                               ui_print("\nOops... something went wrong!\nPlease check the recovery log!\n\n");
+                          } else {
+                                ui_print("\nRestore complete!\n\n");
+                          }
+
+                        
+            } else {
+                ui_print("\nRestore aborted.\n");
+            }
+            if (!ui_text_visible()) break;
+            break;
+        }
+    }
+
+out:
+
+    for (i = 0; i < total; i++) {
+        free(files[i]);
+	free(list[i]);
+    }
+    free(files);
+    free(list);
+}
+
 
 static void
 choose_nandroid_folder()
 {
     static char* headers[] = { "Choose Device-ID,",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
                                "",
                                NULL };
 
@@ -565,15 +742,15 @@ choose_nandroid_folder()
         int key = ui_wait_key();
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -709,19 +886,19 @@ int get_file_selection(char** headers, char** list) {
         int visible = ui_text_visible();
 
             switch (key) {
-                case KEY_UP:
+                case UP:
                     --selected;
                     selected = ui_menu_select(selected);
                     break;
-                case KEY_DOWN:
+                case DN:
                     ++selected;
                     selected = ui_menu_select(selected);
                     break;
-                case BTN_MOUSE:
+                case SELECT:
                     chosen_item = selected;
 		    if (chosen_item==0) chosen_item = -9;
                     break;
-                case KEY_VOLUMEDOWN:
+                case GO_BACK:
                     chosen_item = -9;
                     break;
             }
@@ -870,15 +1047,15 @@ show_menu_nandroid()
         int key = ui_wait_key();
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
         
@@ -906,14 +1083,14 @@ show_menu_nandroid()
 		{
 
 
-				if (items[i]=="- [X] sd-ext") strcat(nandroid_command, " -e");
-				if (items[i]=="- [X] .android_secure_sd") strcat(nandroid_command, " -a");
-				if (items[i]=="- [X] .android_secure_emmc") strcat(nandroid_command, " --android_secure_emmc");
-				if (items[i]=="- [ ] recovery") strcat(nandroid_command, " --norecovery");
-				if (items[i]=="- [ ] boot") strcat(nandroid_command, " --noboot");
-				if (items[i]=="- [ ] data") strcat(nandroid_command, " --nodata");
-				if (items[i]=="- [ ] system") strcat(nandroid_command, " --nosystem");
-				if (items[i]=="- [ ] cache") strcat(nandroid_command, " --nocache");
+				if (strcmp( items[i], "- [X] sd-ext") == 0) strcat(nandroid_command, " -e");
+				if (strcmp( items[i], "- [X] .android_secure_sd") == 0) strcat(nandroid_command, " -a");
+				if (strcmp( items[i], "- [X] .android_secure_emmc") == 0) strcat(nandroid_command, " --android_secure_emmc");
+				if (strcmp( items[i], "- [ ] recovery") == 0) strcat(nandroid_command, " --norecovery");
+				if (strcmp( items[i], "- [ ] boot") == 0) strcat(nandroid_command, " --noboot");
+				if (strcmp( items[i], "- [ ] data") == 0) strcat(nandroid_command, " --nodata");
+				if (strcmp( items[i], "- [ ] system") == 0) strcat(nandroid_command, " --nosystem");
+				if (strcmp( items[i],"- [ ] cache") == 0) strcat(nandroid_command, " --nocache");
                 	        
 		i++;	
 		}
@@ -952,7 +1129,7 @@ void show_choose_zip_menu()
     }
 
     static char* headers[] = {  "Choose a zip to apply",
-			        "or press VOL-DOWN to return",
+			        UNCONFIRM_TXT,
                                 "",
                                 NULL 
     };
@@ -971,11 +1148,11 @@ void show_choose_zip_menu()
     ui_print("\nInstall : ");
     ui_print(file + strlen("/sdcard/"));
     ui_clear_key_queue();
-    ui_print(" ? \nPress Trackball to confirm,");
+    ui_print(" ? \nPress %s to confirm,", CONFIRM);
     ui_print("\nany other key to abort.\n");
 
     int confirm_apply = ui_wait_key();
-    if (confirm_apply == BTN_MOUSE) {
+    if (confirm_apply == SELECT) {
     	ui_print("\nInstall from sdcard...\n");
         int status = install_package(sdcard_package_file);
 	        if (status != INSTALL_SUCCESS) {
@@ -1003,7 +1180,7 @@ void show_choose_zip_menu_emmc()
     }
 
     static char* headers[] = {  "Choose a zip to apply",
-			        "or press VOL-DOWN to return",
+			        UNCONFIRM_TXT,
                                 "",
                                 NULL 
     };
@@ -1022,11 +1199,11 @@ void show_choose_zip_menu_emmc()
     ui_print("\nInstall : ");
     ui_print(file + strlen("/emmc/"));
     ui_clear_key_queue();
-    ui_print(" ? \nPress Trackball to confirm,");
+    ui_print(" ? \nPress %s to confirm,", CONFIRM);
     ui_print("\nany other key to abort.\n");
 
     int confirm_apply = ui_wait_key();
-    if (confirm_apply == BTN_MOUSE) {
+    if (confirm_apply == SELECT) {
     	ui_print("\nInstall from emmc...\n");
         int status = install_package(emmc_package_file);
 	        if (status != INSTALL_SUCCESS) {
@@ -1053,7 +1230,7 @@ show_menu_wipe()
 {
 
     static char* headers[] = { "Choose wipe item,",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
 			       "",
 			       NULL };
 
@@ -1062,18 +1239,20 @@ show_menu_wipe()
 #define ITEM_WIPE_ALL      0
 #define ITEM_WIPE_DATA     1
 #define ITEM_WIPE_CACHE    2
-#define ITEM_WIPE_SECURE   3
-#define ITEM_WIPE_EXT      4
-#define ITEM_WIPE_DALVIK   5
-#define ITEM_WIPE_BAT      6
-#define ITEM_WIPE_ROT      7
-#define ITEM_WIPE_SDCARD   8
-#define ITEM_WIPE_EMMC     9
+#define ITEM_WIPE_SYSTEM   3
+#define ITEM_WIPE_SECURE   4
+#define ITEM_WIPE_EXT      5
+#define ITEM_WIPE_DALVIK   6
+#define ITEM_WIPE_BAT      7
+#define ITEM_WIPE_ROT      8
+#define ITEM_WIPE_SDCARD   9
+#define ITEM_WIPE_EMMC     10
 
     static char* items[] = { "- Wipe ALL data/factory reset",
 			     "- Wipe /data",
                              "- Wipe /cache",
-			     "- Wipe .android_secure",
+			     "- Wipe /system",
+				 "- Wipe .android_secure",
                              "- Wipe /sd-ext",
                              "- Wipe Dalvik-cache",
                              "- Wipe battery stats",
@@ -1093,15 +1272,15 @@ show_menu_wipe()
         int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -1115,17 +1294,16 @@ show_menu_wipe()
                 case ITEM_WIPE_ALL:
                     ui_clear_key_queue();
 		    ui_print("\nWipe ALL userdata");
-                    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_all = ui_wait_key();
-                    if (confirm_wipe_all == BTN_MOUSE) {
+                    if (confirm_wipe_all == SELECT) {
                         erase_root("DATA:");
                         erase_root("DATADATA:");
 			erase_root("SDCARD:.android_secure");
 			erase_root("EMMC:.android_secure");
-                        //erase_root("CACHE:");
-			format_non_mtd_device("CACHE:");
-			ui_print("Formatting CACHE...\n\n");
+            erase_root("CACHE:");
+		
 
 			struct stat st;
         		if (0 != stat("/dev/block/mmcblk1p2", &st))
@@ -1145,10 +1323,10 @@ show_menu_wipe()
                 case ITEM_WIPE_DATA:
                     ui_clear_key_queue();
 		    ui_print("\nWipe /data");
-                    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_data = ui_wait_key();
-                    if (confirm_wipe_data == BTN_MOUSE) {
+                    if (confirm_wipe_data == SELECT) {
                         erase_root("DATA:");
                         erase_root("DATADATA:");
 			ui_print("/data wipe complete!\n\n");
@@ -1161,10 +1339,10 @@ show_menu_wipe()
                 case ITEM_WIPE_EXT:
                     ui_clear_key_queue();
 		    ui_print("\nWipe /sd-ext");
-                    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_ext = ui_wait_key();
-                    if (confirm_wipe_ext == BTN_MOUSE) {
+                    if (confirm_wipe_ext == SELECT) {
                         
 			struct stat st;
         		if (0 != stat("/dev/block/mmcblk1p2", &st))
@@ -1183,10 +1361,10 @@ show_menu_wipe()
                 case ITEM_WIPE_SECURE:
                     ui_clear_key_queue();
 		    ui_print("\nWipe /SDcard & /EMMC .android_secure");
-                    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_secure = ui_wait_key();
-                    if (confirm_wipe_secure == BTN_MOUSE) {
+                    if (confirm_wipe_secure == SELECT) {
                         erase_root("SDCARD:.android_secure");
 			erase_root("EMMC:.android_secure");
                         ui_print(".android_secure wipe complete!\n\n");
@@ -1199,13 +1377,12 @@ show_menu_wipe()
                 case ITEM_WIPE_CACHE:
                     ui_clear_key_queue();
 		    ui_print("\nWipe /cache");
-                    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_cache = ui_wait_key();
-                    if (confirm_wipe_cache == BTN_MOUSE) {
-                        //erase_root("CACHE:");
-                        format_non_mtd_device("CACHE:");
-			ui_print("/cache wipe complete!\n\n");
+                    if (confirm_wipe_cache == SELECT) {
+                        erase_root("CACHE:");
+                        ui_print("/cache wipe complete!\n\n");
                     } else {
                         ui_print("/cache wipe aborted!\n\n");
                     }
@@ -1215,10 +1392,10 @@ show_menu_wipe()
                 case ITEM_WIPE_DALVIK:
                     ui_clear_key_queue();
 		    ui_print("\nWipe Dalvik-cache");
-                    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_dalvik = ui_wait_key();
-                    if (confirm_wipe_dalvik == BTN_MOUSE) {
+                    if (confirm_wipe_dalvik == SELECT) {
                         ui_print("Formatting DATA:dalvik-cache...\n");
                         format_non_mtd_device("DATA:dalvik-cache");
    
@@ -1242,10 +1419,10 @@ show_menu_wipe()
 		case ITEM_WIPE_BAT:
                     ui_clear_key_queue();
 		    ui_print("\nWipe battery stats");
-                    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_bat = ui_wait_key();
-                    if (confirm_wipe_bat == BTN_MOUSE) {
+                    if (confirm_wipe_bat == SELECT) {
                         ui_print("Wiping battery stats...\n");
                         wipe_battery_stats();
                         ui_print("Battery wipe complete!\n\n");
@@ -1259,10 +1436,10 @@ show_menu_wipe()
 		case ITEM_WIPE_ROT:
 		    ui_clear_key_queue();
 		    ui_print("\nWipe rotate settings");
-                    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_rot = ui_wait_key();
-                    if (confirm_wipe_rot == BTN_MOUSE) {
+                    if (confirm_wipe_rot == SELECT) {
                         ui_print("Wiping rotate settings...\n");
                         wipe_rotate_settings();
                         ui_print("Rotate settings wipe complete!\n\n");
@@ -1276,10 +1453,10 @@ show_menu_wipe()
                     ui_clear_key_queue();
 		    ui_print("\nWipe Sdcard");
                     ui_print("\nThis is Irreversible!!!\n");
-		    ui_print("\nPress Trackball to confirm,");
+		    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_mysd = ui_wait_key();
-                    if (confirm_wipe_mysd == BTN_MOUSE) {
+                    if (confirm_wipe_mysd == SELECT) {
                         erase_root("SDCARD:");
                         ui_print("/Sdcard wipe complete!\n\n");
                     } else {
@@ -1292,14 +1469,29 @@ show_menu_wipe()
                     ui_clear_key_queue();
 		    ui_print("\nWipe Emmc");
                     ui_print("\nThis is Irreversible!!!\n");
-		    ui_print("\nPress Trackball to confirm,");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
                     ui_print("\nany other key to abort.\n\n");
                     int confirm_wipe_emmc = ui_wait_key();
-                    if (confirm_wipe_emmc == BTN_MOUSE) {
+                    if (confirm_wipe_emmc == SELECT) {
                         erase_root("EMMC:");
                         ui_print("/Emmc wipe complete!\n\n");
                     } else {
                         ui_print("/Emmc wipe aborted!\n\n");
+                    }
+                    if (!ui_text_visible()) return;
+                    break;
+					
+		case ITEM_WIPE_SYSTEM:
+                    ui_clear_key_queue();
+		    ui_print("\nWipe /system");
+                    ui_print("\nPress %s to confirm,", CONFIRM);
+                    ui_print("\nany other key to abort.\n\n");
+                    int confirm_wipe_mysys = ui_wait_key();
+                    if (confirm_wipe_mysys == SELECT) {
+                        erase_root("SYSTEM:");
+                        ui_print("/system wipe complete!\n\n");
+                    } else {
+                        ui_print("/system wipe aborted!\n\n");
                     }
                     if (!ui_text_visible()) return;
                     break;
@@ -1327,7 +1519,7 @@ show_menu_br()
 {
 
     static char* headers[] = { "Choose backup/restore item;",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
 			       "",
 			       NULL };
 
@@ -1335,13 +1527,15 @@ show_menu_br()
 // these constants correspond to elements of the items[] list.
 #define ITEM_NANDROID_BCK  0
 #define ITEM_NANDROID_RES  1
-#define ITEM_GOOG_BCK  2
-#define ITEM_GOOG_RES  3
+#define ITEM_CWM_NANDROID 2
+#define ITEM_GOOG_BCK  3
+#define ITEM_GOOG_RES  4
 
 
 
     static char* items[] = { "- Nand backup",
 			     "- Nand restore",
+			     "- Nand restore clockworkmod backup",
 			     "- Backup Google proprietary system files",
                              "- Restore Google proprietary system files",
                              NULL };
@@ -1357,15 +1551,15 @@ show_menu_br()
         int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -1378,9 +1572,10 @@ show_menu_br()
 
                 case ITEM_NANDROID_BCK:
 		    ui_print("\n\n*** WARNING ***");
-		    ui_print("\nsd-ext and .android_secure backups require");
-		    ui_print("\nlots of SDcard space and may take a few");
+		    ui_print("\nNandroid backups require minimum");
+		    ui_print("\n700mb SDcard space and may take a few");
 		    ui_print("\nminutes to back up!\n\n");
+		    ui_print("\nUse Other/recoverylog2sd for errors.\n\n"); 
 		    show_menu_nandroid();
                     break;
 
@@ -1408,7 +1603,13 @@ show_menu_br()
 				   "\nRestore complete!\n\n",
 				   "\nRestore aborted!\n\n");
 			break;
-             
+
+		case ITEM_CWM_NANDROID:
+			ui_print("\nExperimental Beta Feature\n\n");
+			make_clockwork_path();
+			choose_clockwork_file();
+			break;
+		             
             }
 
             // if we didn't return from this function to reboot, show
@@ -1433,7 +1634,7 @@ show_menu_partition()
 {
 
     static char* headers[] = { "Choose partition item,",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
 			       "",
 			       NULL };
 
@@ -1460,15 +1661,15 @@ show_menu_partition()
         int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -1482,21 +1683,21 @@ show_menu_partition()
 		case ITEM_PART_SD:
                         ui_clear_key_queue();
 			ui_print("\nPartition sdcard?");
-			ui_print("\nPress Trackball to confirm,");
+			ui_print("\nPress %s to confirm,", CONFIRM);
 		       	ui_print("\nany other key to abort.");
 			int confirm = ui_wait_key();
-				if (confirm == BTN_MOUSE) {
+				if (confirm == SELECT) {
 	                                ui_clear_key_queue();
-				       	ui_print("\n\nUse trackball or volume-keys");
+				       	ui_print("\n\nUse %s", UPDOWNTXT);
 				       	ui_print("\nto increase/decrease size,");
-				       	ui_print("\nTrackball to set (0=NONE) :\n\n");
+				       	ui_print("\n%s to set (0=NONE) :\n\n", CONFIRM);
 					char swapsize[32];
 					int swap = 32;
 					for (;;) {
 						sprintf(swapsize, "%4d", swap);
 						ui_print("\rSwap-size  = %s MB",swapsize);
         	                        	int key = ui_wait_key();
-						if (key == BTN_MOUSE) {
+						if (key == SELECT) {
 	           	                                ui_clear_key_queue();
 							if (swap==0){
 								ui_print("\rSwap-size  = %s MB : NONE\n",swapsize);
@@ -1504,9 +1705,9 @@ show_menu_partition()
 								ui_print("\rSwap-size  = %s MB : SET\n",swapsize);
 							}
 							break;
-					        } else if ((key == KEY_DOWN)) {
+					        } else if ((key == DN)) {
 								swap=swap-32;
-					        } else if ((key == KEY_UP)) {
+					        } else if ((key == UP)) {
 								swap=swap+32;
 			                        }
 						if (swap < 0) { swap=0; }
@@ -1518,7 +1719,7 @@ show_menu_partition()
 						sprintf(extsize, "%4d", ext);
 						ui_print("\rExt2-size  = %s MB",extsize);
         	                        	int key = ui_wait_key();
-						if (key == BTN_MOUSE) {
+						if (key == SELECT) {
 	           	                                ui_clear_key_queue();
 							if (ext==0){
 								ui_print("\rExt2-size  = %s MB : NONE\n",extsize);
@@ -1527,9 +1728,9 @@ show_menu_partition()
 							}
 							ui_print(" FAT32-size = Remainder\n");
 							break;
-					        } else if ((key == KEY_DOWN)) {
+					        } else if ((key == DN)) {
 								ext=ext-128;
-					        } else if ((key == KEY_UP)) {
+					        } else if ((key == UP)) {
 								ext=ext+128;
 			                        }
 						if (ext < 0) { ext=0; }
@@ -1605,7 +1806,7 @@ show_menu_other()
 {
 
     static char* headers[] = { "Choose item,",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
 			       "",
 			       NULL };
 
@@ -1613,12 +1814,12 @@ show_menu_other()
 #define ITEM_OTHER_FIXUID 0
 #define ITEM_OTHER_RE2SD  1
 #define ITEM_OTHER_KEY_TEST 2
-//#define ITEM_OTHER_BATTERY_LEVEL 3
+#define ITEM_OTHER_BATTERY_LEVEL 3
 
-    static char* items[] = { "- Fix apk uid mismatches",
+    static char* items[] = { "- Fix Permissions",
 			     "- Move recovery.log to SD",
                              "- Debugging Test Key Codes",
-			     //"- Check Battery Level",
+			     "- Check Battery Level",
 				NULL };
 
     ui_start_menu(headers, items);
@@ -1632,15 +1833,15 @@ show_menu_other()
         int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -1674,12 +1875,13 @@ show_menu_other()
 		case ITEM_OTHER_KEY_TEST:
 				key_logger_test();
 				break;
-/*
+		
+
 		case ITEM_OTHER_BATTERY_LEVEL:
 				check_my_battery_level();
 				break;
-*/
-            }
+		
+		}
 
             // if we didn't return from this function to reboot, show
             // the menu again.
@@ -1702,7 +1904,7 @@ show_menu_flash()
 {
 
     static char* headers[] = { "Choose item,",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
 			       "",
 			       NULL };
 
@@ -1727,15 +1929,15 @@ show_menu_flash()
         int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -1835,7 +2037,7 @@ static void
 show_menu_mount()
 {
    static char* headers[] = { "Choose mount item,",
-			       "or press Vol Down to return",
+			       UNCONFIRM_TXT,
 			       "",
 			       NULL };
 				   
@@ -1852,15 +2054,15 @@ show_menu_mount()
         int key = ui_wait_key();
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
 	}
         if (chosen_item >= 0) {
@@ -1892,18 +2094,29 @@ show_menu_ext4_data()
 {
 
     static char* headers[] = { "Choose  item,",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
 			       "",
 			       NULL };
 
 // these constants correspond to elements of the items[] list.
-//#define ITEM_EXT4_CHK          0
-#define ITEM_EXT4_FORMEXT4     0
-#define ITEM_EXT4_FORMEXT3     1
+#define ITEM_EXT4_CHK          0
+#define ITEM_EXT4_FORMEXT4     1
+#define ITEM_EXT4_FORMEXT3     2
+#define ITEM_EXT4_DATAEXT3     3
+#define ITEM_EXT4_CACEXT3      4
+#define ITEM_EXT4_DATAEXT4     5
+#define ITEM_EXT4_CACEXT4      6
 
     static char* items[] = { //"- Check /data fs format",
-			     "- Format /data to ext4",
-			     "- Format /data to ext3",
+			     "- Check FS format",
+			     "- Upgrade all to ext4",
+			     "- Format all to ext3",
+			     
+			     "- Restore data ext3",
+			     "- Restore cache ext3",
+			     
+			     "- Upgrade data ext4",
+			     "- Upgrade cache ext4",
                               NULL };
 
 ui_start_menu(headers, items);
@@ -1917,15 +2130,15 @@ ui_start_menu(headers, items);
         int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -1936,8 +2149,9 @@ ui_start_menu(headers, items);
 
             switch (chosen_item) {
 
-	/*	
+		
 		case ITEM_EXT4_CHK:
+			/*
 			run_script("\nChecking ext filesystem",
 				   "\non /data : ",
 				   "/sbin/partext4 check",
@@ -1945,19 +2159,23 @@ ui_start_menu(headers, items);
 				   "\nError : Run 'partext4 check' via adb!\n\n",
 				   "\nExt type check complete!\n\n",
 				   "\nExt type check aborted!\n\n");
+			*/
+				check_fs();
 			break;
-	*/
+	
 		case ITEM_EXT4_FORMEXT4:
                         ui_clear_key_queue();
-			ui_print("\nFormat /data to ext4?");
-			ui_print("\nPress Trackball to confirm,");
-		       	ui_print("\nany other key to abort.");
-			ui_print("\nThis wipes /data too!!\n");
+			ui_print("\nUpgrade /data /cache to ext4?");
+			ui_print("\nPress %s to confirm,", CONFIRM);
+		       	ui_print("\nany other key to abort.\n");
+			
 			int confirm_formext4 = ui_wait_key();
-				if (confirm_formext4 == BTN_MOUSE) {
-	                          // ui_print("\nFormatting data as ext4...\n");     
-				   erase_root("DATA:");
-				   erase_root("DATADATA:");
+				if (confirm_formext4 == SELECT) {
+	                          /*
+				   // ui_print("\nFormatting data as ext4...\n");     
+				   //erase_root("DATA:");
+				   //erase_root("CACHE:");
+				   //erase_root("SYSTEM:");
 				run_script("\nFormat ext4",
 					 "\nFormatting ext4 : ",
 					 "/sbin/partext4 formatext4",
@@ -1966,8 +2184,12 @@ ui_start_menu(headers, items);
 				  	 "\nExt4 format complete!\n\n",
 				  	 "\nExt4 format aborted!\n\n");
 				  // ui_print("\nFormatting data as ext4 complete.\n\n");
+				  */
+				check_fs_format("DATA:", "/data", 1, 0);
+				//check_fs_format("SYSTEM:", "/system", 1, 0);
+				check_fs_format("CACHE:", "/cache", 1, 0);
 				} else {
-					 ui_print("\nFormatting data as ext4 aborted.\n\n");
+					 ui_print("\nFormatting data & cache as ext4 aborted.\n\n");
 				}
 				if (!ui_text_visible()) return;
 				
@@ -1975,15 +2197,18 @@ ui_start_menu(headers, items);
 
 		case ITEM_EXT4_FORMEXT3:
                         ui_clear_key_queue();
-			ui_print("\nReformat /data to ext3?");
-			ui_print("\nPress Trackball to confirm,");
+			ui_print("\nReformat /data, & /cache to ext3?");
+			ui_print("\nPress %s to confirm,", CONFIRM);
 		       	ui_print("\nany other key to abort.");
-			ui_print("\nThis wipes /data too!!\n");
+			ui_print("\nThis wipes /data, & /cache!!\n\n");
+			
 			int confirm_formext3 = ui_wait_key();
-				if (confirm_formext3 == BTN_MOUSE) {
+				if (confirm_formext3 == SELECT) {
 	                          // ui_print("\nReformatting data as ext3...\n");     
+				   /*
 				   erase_root("DATA:");
-				   erase_root("DATADATA:");
+				   erase_root("CACHE:");
+				   erase_root("SYSTEM:");
 				run_script("\nFormat ext3",
 					 "\nFormatting ext3 : ",
 					 "/sbin/partext4 reformatext3",
@@ -1991,13 +2216,84 @@ ui_start_menu(headers, items);
 				  	 "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				  	 "\nExt3 re-format complete!\n\n",
 				  	 "\nExt3 re-format aborted!\n\n");
+				    */
+				check_fs_format("DATA:", "/data", 0, 1);
+				//check_fs_format("SYSTEM:", "/system", 0, 1);
+				check_fs_format("CACHE:", "/cache", 0, 1);
 				} else {
-					 ui_print("\nReFormatting data as ext3 aborted.\n\n");
+					 ui_print("\nReFormatting /data & /cache as ext3 aborted.\n\n");
 				}
 				if (!ui_text_visible()) return;    	
 			
 				break;		
 
+			
+
+		case ITEM_EXT4_DATAEXT3:
+			ui_clear_key_queue();
+			ui_print("\nReformat data to ext3?");
+			ui_print("\nPress %s to confirm,", CONFIRM);
+		       	ui_print("\nany other key to abort.");
+			ui_print("\nThis erases data!!\n");
+			int confirm_dataformext3 = ui_wait_key();
+				if (confirm_dataformext3 == SELECT) {
+				check_fs_format("DATA:", "/data", 0, 1);
+				} else {
+					 ui_print("\nFormatting data as ext3 aborted.\n\n");
+				}
+				if (!ui_text_visible()) return;    	
+			
+				break;		
+
+		case ITEM_EXT4_CACEXT3:
+			ui_clear_key_queue();
+			ui_print("\nReformat cache to ext3?");
+			ui_print("\nPress %s to confirm,", CONFIRM);
+		       	ui_print("\nany other key to abort.");
+			ui_print("\nThis erases cache!!\n");
+			int confirm_cacformext3 = ui_wait_key();
+				if (confirm_cacformext3 == SELECT) {
+				check_fs_format("CACHE:", "/cache", 0, 1);
+				} else {
+					 ui_print("\nFormatting cache as ext3 aborted.\n\n");
+				}
+				if (!ui_text_visible()) return;    	
+			
+				break;	
+
+		
+
+		case ITEM_EXT4_DATAEXT4:
+			ui_clear_key_queue();
+			ui_print("\nUpgrade data to ext4?");
+			ui_print("\nPress %s to confirm,", CONFIRM);
+		       	ui_print("\nany other key to abort.\n");
+			ui_print("\n");
+			int confirm_dataupgext4 = ui_wait_key();
+				if (confirm_dataupgext4 == SELECT) {
+				check_fs_format("DATA:", "/data", 1, 0);
+				} else {
+					 ui_print("\nUpgrading data to ext4 aborted.\n\n");
+				}
+				if (!ui_text_visible()) return;    	
+			
+				break;	
+
+		case ITEM_EXT4_CACEXT4:
+			ui_clear_key_queue();
+			ui_print("\nUpgrade cache to ext4?");
+			ui_print("\nPress %s to confirm,", CONFIRM);
+		       	ui_print("\nany other key to abort.\n");
+			ui_print("\n");
+			int confirm_cacupgext4 = ui_wait_key();
+				if (confirm_cacupgext4 == SELECT) {
+				check_fs_format("CACHE:", "/cache", 1, 0);
+				} else {
+					 ui_print("\nUpgrading cache to ext4 aborted.\n\n");
+				}
+				if (!ui_text_visible()) return;    	
+			
+				break;		
 
 	        
             }
@@ -2024,7 +2320,7 @@ show_menu_usb()
 {
 
     static char* headers[] = { "Choose item,",
-			       "or press VOL-DOWN to return",
+			       UNCONFIRM_TXT,
 			       "",
 			       	NULL };
 
@@ -2048,15 +2344,15 @@ show_menu_usb()
         int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEDOWN) {
+        if (key == GO_BACK) {
             break;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -2092,6 +2388,140 @@ show_menu_usb()
 	 }	
 	}
 
+static void
+show_menu_developer()
+{
+
+    static char* headers[] = { "Choose Developer item,",
+			       UNCONFIRM_TXT,
+			       "",
+			       	NULL };
+
+// these constants correspond to elements of the items[] list.
+
+#define ITEM_DEV_MKBOOT 0
+#define ITEM_DEV_SU 1
+#define ITEM_DEV_SU_ENG 2
+#define ITEM_DEV_EXT_TOGGLE 3
+#define ITEM_DEV_RB_BOOT 4
+#define ITEM_DEV_RB_REC 5
+
+    static char* items[] = { "- Make and flash boot from zimage",
+			     "- Install su & superuser",
+			     "- Install eng (unguarded) su",
+			     "- Toggle full format ext3 ext4",
+			     "- Reboot to bootloader",
+			     "- Reboot recovery",			     	
+                             	NULL };
+
+    ui_start_menu(headers, items);
+    int selected = 0;
+    int chosen_item = -1;
+
+    finish_recovery(NULL);
+    ui_reset_progress();
+    for (;;) {
+        int key = ui_wait_key();
+        int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
+        int visible = ui_text_visible();
+
+        if (key == GO_BACK) {
+            break;
+        } else if ((key == DN) && visible) {
+            ++selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == UP) && visible) {
+            --selected;
+            selected = ui_menu_select(selected);
+        } else if ((key == SELECT) && visible ) {
+            chosen_item = selected;
+        }
+
+        if (chosen_item >= 0) {
+            // turn off the menu, letting ui_print() to scroll output
+            // on the screen.
+            ui_end_menu();
+
+            switch (chosen_item) {
+	
+
+		case ITEM_DEV_EXT_TOGGLE:
+			toggle_full_ext_format();
+			break;
+		
+		case ITEM_DEV_MKBOOT:
+			ui_clear_key_queue();
+			ui_print("\nMake new boot from zImage?");
+			ui_print("\nMust be plugged into pc as");
+			ui_print("\nsdcard is ejected as mass storage");
+			ui_print("\nPress %s to confirm,", CONFIRM);
+		       	ui_print("\nany other key to abort.\n\n");
+			int confirm_mkboot = ui_wait_key();
+				if (confirm_mkboot == SELECT) {
+				do_make_new_boot();
+				} else {
+					 ui_print("\nAborted make new boot.\n\n");
+				}
+				if (!ui_text_visible()) return;  
+			
+			break;
+
+		case ITEM_DEV_SU:
+			ui_clear_key_queue();
+			ui_print("\nInstall or fix su & superuser?");
+			ui_print("\nPress %s to confirm,", CONFIRM);
+		       	ui_print("\nany other key to abort.\n\n");
+			int confirm_su_super = ui_wait_key();
+				if (confirm_su_super == SELECT) {
+				install_su(0);
+				} else {
+					 ui_print("\nInstall of su & superuser aborted.\n\n");
+				}
+				if (!ui_text_visible()) return; 
+			
+			break;
+
+		case ITEM_DEV_SU_ENG:
+			ui_clear_key_queue();
+			ui_print("\nInstall eng (unguarded) su?");
+			ui_print("\nPress %s to confirm,", CONFIRM);
+		       	ui_print("\nany other key to abort.\n\n");
+			int confirm_su_eng = ui_wait_key();
+				if (confirm_su_eng == SELECT) {
+				install_su(1);
+				} else {
+					 ui_print("\nInstall of su aborted.\n\n");
+				}
+				if (!ui_text_visible()) return; 
+			
+			break;
+
+		case ITEM_DEV_RB_REC:
+				rb_recovery();
+			break;
+
+		case ITEM_DEV_RB_BOOT:
+				rb_bootloader();
+	
+
+			break;
+
+			}
+// if we didn't return from this function to reboot, show
+            // the menu again.
+            ui_start_menu(headers, items);
+            selected = 0;
+            chosen_item = -1;
+
+            finish_recovery(NULL);
+            ui_reset_progress();
+
+            // throw away keys pressed while the command was running,
+            // so user doesn't accidentally trigger menu items.
+            ui_clear_key_queue();
+	  }
+	 }	
+	}
 
 
 static void
@@ -2114,7 +2544,8 @@ prompt_and_wait()
 #define ITEM_MOUNT	   6
 #define ITEM_OTHER         7
 #define ITEM_EXT4DATA      8
-#define ITEM_POWEROFF      9
+#define ITEM_DEVELOPER	   9
+#define ITEM_POWEROFF      10
 
 
     static char* items[] = { "- Reboot system now",
@@ -2125,7 +2556,8 @@ prompt_and_wait()
                              "- Partition sdcard",
                              "- Mounts",
 			     "- Other",
-                             "- Format /data Ext4|Ext3",
+                             "- Format data,cache Ext4 | Ext3",
+			     "- Developer menu",
 			     "- Power off",
                              NULL };
 
@@ -2140,21 +2572,21 @@ prompt_and_wait()
         int alt = ui_key_pressed(KEY_LEFTALT) || ui_key_pressed(KEY_RIGHTALT);
         int visible = ui_text_visible();
 
-        if (key == KEY_VOLUMEUP && ui_key_pressed(KEY_VOLUMEDOWN)) {
+        if (key == DN && ui_key_pressed(KEY_POWER)) {
             // Wait for the keys to be released, to avoid triggering
             // special boot modes (like coming back into recovery!).
-            while (ui_key_pressed(KEY_VOLUMEUP) ||
-                   ui_key_pressed(KEY_VOLUMEDOWN)) {
+            while (ui_key_pressed(KEY_POWER) ||
+                   ui_key_pressed(DN)) {
                 usleep(1000);
             }
             chosen_item = ITEM_REBOOT;
-        } else if ((key == KEY_DOWN) && visible) {
+        } else if ((key == DN) && visible) {
             ++selected;
             selected = ui_menu_select(selected);
-        } else if ((key == KEY_UP) && visible) {
+        } else if ((key == UP) && visible) {
             --selected;
             selected = ui_menu_select(selected);
-        } else if ((key == BTN_MOUSE) && visible ) {
+        } else if ((key == SELECT) && visible ) {
             chosen_item = selected;
         }
 
@@ -2207,6 +2639,10 @@ prompt_and_wait()
 				   "\nOops... something went wrong!\nPlease check the recovery log!\n\n",
 				   "\nPower off complete!\n\n",
 				   "\nPower off aborted!\n\n");
+			break;
+
+		case ITEM_DEVELOPER:
+			show_menu_developer();
 			break;
 
           

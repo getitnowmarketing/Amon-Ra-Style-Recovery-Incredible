@@ -12,6 +12,7 @@ case $1 in
 	echo "USB Mass Storage enabled"
         ;;
     off)
+	sync
 	echo "" > /sys/devices/platform/usb_mass_storage/lun0/file
 	echo "USB Mass Storage disabled"
         ;;
