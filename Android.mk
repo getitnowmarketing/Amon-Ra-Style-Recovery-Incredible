@@ -26,6 +26,9 @@ LOCAL_FORCE_STATIC_EXECUTABLE := true
 RECOVERY_API_VERSION := 2
 LOCAL_CFLAGS += -DRECOVERY_API_VERSION=$(RECOVERY_API_VERSION)
 
+ifeq ($(TARGET_USES_CAF_QCOMM_MTD_RADIO),true)
+LOCAL_CFLAGS += -DUSES_QCOMM_RADIO
+endif
 # This binary is in the recovery ramdisk, which is otherwise a copy of root.
 # It gets copied there in config/Makefile.  LOCAL_MODULE_TAGS suppresses
 # a (redundant) copy of the binary in /system/bin for user builds.
